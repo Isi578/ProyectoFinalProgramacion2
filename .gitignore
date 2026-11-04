@@ -29,3 +29,6 @@ target/
 # Local IntelliJ project state
 .idea/
 *.iml
+
+# Local diagram previews
+docs/diagrams/rendered/

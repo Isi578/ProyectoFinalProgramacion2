@@ -1,0 +1,193 @@
+@startuml HotelUQ_Domain
+!pragma layout smetana
+top to bottom direction
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+skinparam nodesep 25
+skinparam ranksep 35
+
+title HotelUQ - Domain and reservation lifecycle
+
+package "Hotel domain" {
+  class Customer
+  class RoomType
+  class Room
+  class Reservation
+  class PaymentReceipt
+  enum ReservationStatus
+  interface ReservationState
+  class PendingPaymentState
+  class ConfirmedState
+  class CancelledState
+  interface ServiceOption
+  class AdditionalService
+  class ServicePackage
+  interface PriceComponent
+  class RoomStayPrice
+  class ServicePriceDecorator
+
+  Reservation "0..*" --> "1" Customer
+  Reservation "0..*" --> "1" Room
+  Reservation "1" *--> "1" ReservationState
+  Reservation "0..*" o--> "0..*" ServiceOption
+  Reservation "1" --> "1" PaymentReceipt
+  Room "0..*" --> "1" RoomType
+  ReservationState --> ReservationStatus
+  AdditionalService ..|> ServiceOption
+  ServicePackage ..|> ServiceOption
+  ServicePackage "0..*" o--> "1..*" ServiceOption
+  PendingPaymentState ..|> ReservationState
+  ConfirmedState ..|> ReservationState
+  CancelledState ..|> ReservationState
+  PendingPaymentState --> ConfirmedState : approved payment
+  ConfirmedState --> CancelledState : successful cancellation
+  RoomStayPrice ..|> PriceComponent
+  RoomStayPrice --> Room
+  ServicePriceDecorator ..|> PriceComponent
+  ServicePriceDecorator --> PriceComponent
+  ServicePriceDecorator --> ServiceOption
+  ServicePackage -[hidden]down-> AdditionalService
+  AdditionalService -[hidden]down-> PendingPaymentState
+  PendingPaymentState -[hidden]down-> CancelledState
+  CancelledState -[hidden]down-> ConfirmedState
+  ConfirmedState -[hidden]down-> Reservation
+  Reservation -[hidden]down-> RoomStayPrice
+  RoomStayPrice -[hidden]down-> ReservationStatus
+  ReservationStatus -[hidden]down-> ServicePriceDecorator
+}
+
+note bottom
+  A reservation owns its current lifecycle state. Service choices and package components
+  are aggregations because catalog options may be shared. A room may have many reservations
+  over time, but confirmed date intervals cannot overlap.
+end note
+@enduml
+
+@startuml HotelUQ_Reservation_Application
+!pragma layout smetana
+top to bottom direction
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+skinparam nodesep 25
+skinparam ranksep 35
+
+title HotelUQ - Reservation application contracts
+
+package "Reservation application" {
+  interface ReservationUseCase
+  interface HotelReservationAdministrationUseCase
+  class ReservationFacade
+  class ReservationApplicationService
+  class AvailabilityService
+  class AccommodationPricingService
+  interface RoomCatalog
+  interface ReservationRepository
+  interface ServiceCatalog
+  interface CustomerCatalog
+  interface PaymentGateway
+  interface PromotionPolicy
+  interface LoyaltyPointsPort
+  interface CancellationPolicy
+  class StandardCancellationPolicy
+  class HotelCancellationPolicy
+  class ReservationEventPublisher
+  interface ReservationEventObserver
+  class ActivityHistoryObserver
+  class CustomerNotificationObserver
+
+  ReservationFacade ..|> ReservationUseCase
+  ReservationApplicationService ..|> ReservationUseCase
+  ReservationApplicationService ..|> HotelReservationAdministrationUseCase
+  ReservationFacade --> ReservationUseCase
+  ReservationApplicationService --> AvailabilityService
+  ReservationApplicationService --> AccommodationPricingService
+  ReservationApplicationService --> RoomCatalog
+  ReservationApplicationService --> ReservationRepository
+  ReservationApplicationService --> ServiceCatalog
+  ReservationApplicationService --> CustomerCatalog
+  ReservationApplicationService --> PaymentGateway
+  ReservationApplicationService --> PromotionPolicy
+  ReservationEventPublisher --> ReservationEventObserver
+  ActivityHistoryObserver ..|> ReservationEventObserver
+  CustomerNotificationObserver ..|> ReservationEventObserver
+  StandardCancellationPolicy ..|> CancellationPolicy
+  HotelCancellationPolicy ..|> CancellationPolicy
+  ActivityHistoryObserver -[hidden]down-> ReservationEventPublisher
+  ReservationEventPublisher -[hidden]down-> HotelCancellationPolicy
+  HotelCancellationPolicy -[hidden]down-> CustomerNotificationObserver
+  CustomerNotificationObserver -[hidden]down-> StandardCancellationPolicy
+  StandardCancellationPolicy -[hidden]down-> LoyaltyPointsPort
+  LoyaltyPointsPort -[hidden]down-> ReservationApplicationService
+  ReservationApplicationService -[hidden]down-> ReservationFacade
+}
+
+note bottom
+  Guest cancellation and hotel cancellation have separate contracts.
+  Promotions and loyalty stay replaceable integration ports; eligibility and points rules
+  belong to the corresponding team modules.
+end note
+@enduml
+
+@startuml HotelUQ_MVC_Infrastructure
+!pragma layout smetana
+top to bottom direction
+skinparam packageStyle rectangle
+skinparam classAttributeIconSize 0
+skinparam linetype ortho
+skinparam nodesep 25
+skinparam ranksep 35
+
+title HotelUQ - JavaFX MVC and in-memory adapters
+
+package "Presentation - JavaFX MVC" {
+  class HotelUqApplication
+  class ReservationView
+  class ReservationController
+  interface ReservationUseCase
+  class ReservationFacade
+  HotelUqApplication --> ReservationView
+  HotelUqApplication --> ReservationController
+  ReservationController --> ReservationView
+  ReservationController --> ReservationUseCase
+  ReservationFacade ..|> ReservationUseCase
+}
+
+package "Infrastructure" {
+  class InMemoryRoomCatalog
+  class InMemoryReservationRepository
+  class InMemoryServiceCatalog
+  class InMemoryCustomerCatalog
+  interface VirtualCardWallet
+  class InMemoryVirtualCardWallet
+  class VirtualCardPaymentAdapter
+  interface HotelComponentsFactory
+  class InMemoryHotelComponentsFactory
+  interface RoomCatalog
+  interface ReservationRepository
+  interface ServiceCatalog
+  interface CustomerCatalog
+  interface PaymentGateway
+
+  InMemoryRoomCatalog ..|> RoomCatalog
+  InMemoryReservationRepository ..|> ReservationRepository
+  InMemoryServiceCatalog ..|> ServiceCatalog
+  InMemoryCustomerCatalog ..|> CustomerCatalog
+  InMemoryVirtualCardWallet ..|> VirtualCardWallet
+  VirtualCardPaymentAdapter ..|> PaymentGateway
+  VirtualCardPaymentAdapter --> VirtualCardWallet
+  InMemoryHotelComponentsFactory ..|> HotelComponentsFactory
+  InMemoryHotelComponentsFactory -[hidden]down-> VirtualCardPaymentAdapter
+  VirtualCardPaymentAdapter -[hidden]down-> InMemoryVirtualCardWallet
+  InMemoryVirtualCardWallet -[hidden]down-> InMemoryCustomerCatalog
+  InMemoryCustomerCatalog -[hidden]down-> InMemoryServiceCatalog
+  InMemoryServiceCatalog -[hidden]down-> InMemoryReservationRepository
+  InMemoryReservationRepository -[hidden]down-> InMemoryRoomCatalog
+}
+
+note bottom
+  Flow: View -> Controller -> ReservationFacade -> ReservationUseCase.
+  The composition factory wires in-memory adapters for a runnable reservation demo.
+end note
+@enduml
