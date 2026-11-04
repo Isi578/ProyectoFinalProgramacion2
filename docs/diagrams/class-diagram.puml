@@ -154,33 +154,40 @@ package "Presentation - JavaFX MVC" {
   ReservationFacade ..|> ReservationUseCase
 }
 
-package "Infrastructure" {
-  class InMemoryRoomCatalog
-  class InMemoryReservationRepository
-  class InMemoryServiceCatalog
-  class InMemoryCustomerCatalog
-  interface VirtualCardWallet
-  class InMemoryVirtualCardWallet
-  class VirtualCardPaymentAdapter
-  interface HotelComponentsFactory
-  class InMemoryHotelComponentsFactory
+package "Application ports" {
   interface RoomCatalog
   interface ReservationRepository
   interface ServiceCatalog
   interface CustomerCatalog
   interface PaymentGateway
+  interface VirtualCardPaymentPort
+}
+
+package "Infrastructure" {
+  class InMemoryRoomCatalog
+  class InMemoryReservationRepository
+  class InMemoryServiceCatalog
+  class InMemoryCustomerCatalog
+  class InMemoryVirtualCardPaymentPort
+  class PaymentMovement
+  enum PaymentMovementType
+  class VirtualCardPaymentAdapter
+  interface HotelComponentsFactory
+  class InMemoryHotelComponentsFactory
 
   InMemoryRoomCatalog ..|> RoomCatalog
   InMemoryReservationRepository ..|> ReservationRepository
   InMemoryServiceCatalog ..|> ServiceCatalog
   InMemoryCustomerCatalog ..|> CustomerCatalog
-  InMemoryVirtualCardWallet ..|> VirtualCardWallet
+  InMemoryVirtualCardPaymentPort ..|> VirtualCardPaymentPort
+  InMemoryVirtualCardPaymentPort --> PaymentMovement
+  PaymentMovement --> PaymentMovementType
   VirtualCardPaymentAdapter ..|> PaymentGateway
-  VirtualCardPaymentAdapter --> VirtualCardWallet
+  VirtualCardPaymentAdapter --> VirtualCardPaymentPort
   InMemoryHotelComponentsFactory ..|> HotelComponentsFactory
   InMemoryHotelComponentsFactory -[hidden]down-> VirtualCardPaymentAdapter
-  VirtualCardPaymentAdapter -[hidden]down-> InMemoryVirtualCardWallet
-  InMemoryVirtualCardWallet -[hidden]down-> InMemoryCustomerCatalog
+  VirtualCardPaymentAdapter -[hidden]down-> InMemoryVirtualCardPaymentPort
+  InMemoryVirtualCardPaymentPort -[hidden]down-> InMemoryCustomerCatalog
   InMemoryCustomerCatalog -[hidden]down-> InMemoryServiceCatalog
   InMemoryServiceCatalog -[hidden]down-> InMemoryReservationRepository
   InMemoryReservationRepository -[hidden]down-> InMemoryRoomCatalog

@@ -1,28 +1,25 @@
 package com.hoteluq.infrastructure.payment;
 
 import com.hoteluq.application.port.PaymentGateway;
+import com.hoteluq.application.port.VirtualCardPaymentPort;
 import com.hoteluq.domain.model.PaymentReceipt;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 
 public final class VirtualCardPaymentAdapter implements PaymentGateway {
-    private final VirtualCardWallet wallet;
+    private final VirtualCardPaymentPort cardPayments;
 
-    public VirtualCardPaymentAdapter(VirtualCardWallet wallet) {
-        this.wallet = wallet;
+    public VirtualCardPaymentAdapter(VirtualCardPaymentPort cardPayments) {
+        this.cardPayments = cardPayments;
     }
 
     @Override
-    public PaymentReceipt charge(String cardId, String customerId, BigDecimal amount, String reservationId) {
-        WalletTransaction movement = wallet.charge(cardId, customerId, amount);
-        return new PaymentReceipt(
-                movement.getId(), movement.getCardId(), movement.getAmount(),
-                movement.getOccurredAt());
+    public PaymentReceipt charge(String cardId, String customerId, BigDecimal amount) {
+        return cardPayments.charge(cardId, customerId, amount);
     }
 
     @Override
     public void refund(PaymentReceipt originalPayment, BigDecimal refundAmount) {
-        wallet.refund(originalPayment.getTransactionId(), refundAmount);
+        cardPayments.refund(originalPayment, refundAmount);
     }
 }

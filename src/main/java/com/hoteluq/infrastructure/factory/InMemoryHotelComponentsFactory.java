@@ -11,9 +11,8 @@ import com.hoteluq.infrastructure.memory.InMemoryCustomerCatalog;
 import com.hoteluq.infrastructure.memory.InMemoryReservationRepository;
 import com.hoteluq.infrastructure.memory.InMemoryRoomCatalog;
 import com.hoteluq.infrastructure.memory.InMemoryServiceCatalog;
-import com.hoteluq.infrastructure.payment.InMemoryVirtualCardWallet;
+import com.hoteluq.infrastructure.payment.InMemoryVirtualCardPaymentPort;
 import com.hoteluq.infrastructure.payment.VirtualCardPaymentAdapter;
-import com.hoteluq.infrastructure.payment.VirtualCardWallet;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -42,11 +41,11 @@ public final class InMemoryHotelComponentsFactory implements HotelComponentsFact
         ServicePackage wellnessPackage = new ServicePackage(
                 "WELLNESS", "Wellness package", List.of(spa, breakfast));
 
-        InMemoryVirtualCardWallet wallet = new InMemoryVirtualCardWallet();
-        wallet.registerCard("CARD-ANA-001", "GUEST-ANA-001",
+        InMemoryVirtualCardPaymentPort cardPayments = new InMemoryVirtualCardPaymentPort();
+        cardPayments.registerDemoCard("CARD-ANA-001", "GUEST-ANA-001",
                 new BigDecimal("2000000"), true);
 
-        PaymentGateway paymentGateway = new VirtualCardPaymentAdapter(wallet);
+        PaymentGateway paymentGateway = new VirtualCardPaymentAdapter(cardPayments);
 
         return new HotelComponents(
                 new InMemoryRoomCatalog(rooms),
@@ -54,7 +53,6 @@ public final class InMemoryHotelComponentsFactory implements HotelComponentsFact
                 new InMemoryServiceCatalog(List.of(breakfast, parking, spa, wellnessPackage)),
                 new InMemoryCustomerCatalog(List.of(
                         new Customer("GUEST-ANA-001", "Ana Pérez", "ana@example.com"))),
-                paymentGateway,
-                wallet);
+                paymentGateway);
     }
 }

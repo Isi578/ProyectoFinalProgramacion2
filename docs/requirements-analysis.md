@@ -22,15 +22,15 @@ This branch implements the reservation flow and the in-memory contracts/adapters
 | RF-004 | Create a reservation for a guest and room. | Reservations: `ReservationApplicationService`, `Reservation`, `ReservationUseCase`. |
 | RF-005 | Include available additional services and packages in a reservation total. | Services/pricing: `ServiceCatalog`, `ServiceOption`, `ServicePackage`, `AccommodationPricingService`, `ServicePriceDecorator`. |
 | RF-006 | Apply promotions only when requirements are satisfied. | Promotions: `PromotionPolicy`, `NoPromotionPolicy`; promotion eligibility rules remain group-defined. |
-| RF-007 | Require an active card with enough funds before confirming. | Payments: `PaymentGateway`, `VirtualCardPaymentAdapter`, `InMemoryVirtualCardWallet`. |
-| RF-008 | Record card charges and return refunds to the card used for payment. | Payments: `VirtualCardWallet`, `WalletTransaction`, `PaymentReceipt`. |
+| RF-007 | Require an active card with enough funds before confirming. | Reservations/payments boundary: `PaymentGateway`, `VirtualCardPaymentPort`, `VirtualCardPaymentAdapter`; `InMemoryVirtualCardPaymentPort` is demo-only. |
+| RF-008 | Record card charges and return refunds to the card used for payment. | Payment integration: `PaymentReceipt`, `PaymentMovement`; the card module implements `VirtualCardPaymentPort` in the full system. |
 | RF-009 | Cancel a reservation and calculate the refund from time to arrival. | Reservations/admin: `CancellationPolicy`, `StandardCancellationPolicy`, `HotelCancellationPolicy`, `HotelReservationAdministrationUseCase`. |
 | RF-010 | View a guest’s reservation history and activity. | Reservations: `ReservationUseCase`, `ReservationRepository`, `ActivityHistoryObserver`. |
 | RF-011 | Administer rooms, room types, customers, additional services, and promotions. | Integration contracts: `RoomAdministrationUseCase`, `CustomerAccountUseCase`, `ServiceAdministrationUseCase`, `PromotionAdministrationUseCase`; full modules remain outside this branch’s scope. |
-| RF-012 | Recharge virtual cards only as an administrator. | Payments/admin: `CardRechargeUseCase`; the guest reservation contract exposes no recharge operation. Authorization and full admin flow belong to those modules. |
+| RF-012 | Recharge virtual cards only as an administrator. | Payments/admin: `CardRechargeUseCase` contract; recharge logic and authorization belong to the card/admin modules. No recharge operation exists in the reservation demo adapter. |
 | RF-013 | Accumulate and redeem points, expiring them after one year and spending earliest-expiring points first. | Loyalty: `LoyaltyPointsPort`, `LoyaltyPointsUseCase`; the ledger belongs to the loyalty module. |
 | RF-014 | Generate operational reports as TXT/PDF and visual charts. | Reporting: `HotelReportQuery`, `ReportExporter`; full queries, exporters, and charts remain team work. |
-| RF-015 | Include enough initial data to demonstrate the application. | Composition/in-memory data: `InMemoryHotelComponentsFactory`, in-memory catalogs, and wallet. |
+| RF-015 | Include enough initial data to demonstrate the application. | Composition/in-memory data: `InMemoryHotelComponentsFactory`, in-memory catalogs, and a seeded demo payment port. |
 
 ## Business rules
 

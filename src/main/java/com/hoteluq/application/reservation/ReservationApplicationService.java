@@ -116,7 +116,7 @@ public final class ReservationApplicationService implements ReservationUseCase,
         }
 
         PaymentReceipt payment = paymentGateway.charge(
-                request.getCardId().trim(), customer.getId(), total, "reservation-pending");
+                request.getCardId().trim(), customer.getId(), total);
 
         Reservation reservation = new Reservation(
                 customer, room, request.getCheckInAt(), request.getCheckOutAt(),

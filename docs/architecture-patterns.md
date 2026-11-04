@@ -12,7 +12,7 @@ JavaFX nodes live under presentation.javafx; ReservationController handles UI ac
 | OCP | Adding a room type or cancellation policy should not require rewriting the reservation workflow. | RoomFactory has concrete factories; CancellationPolicy is strategy-based; ServiceOption supports new options and packages. |
 | LSP | Specialized room factories and service options must work through their common contracts. | StandardRoomFactory and SuiteRoomFactory implement the same creation contract; individual services and packages implement ServiceOption. |
 | ISP | A large hotel interface would force modules to depend on methods they do not use. | Separate catalog, repository, payment, promotion, and loyalty ports expose narrow contracts. |
-| DIP | Business rules tied to concrete in-memory storage or wallet classes are hard to replace. | ReservationApplicationService receives interfaces; InMemoryHotelComponentsFactory wires implementations at the composition root. |
+| DIP | Business rules tied to concrete in-memory storage or payment implementations are hard to replace. | ReservationApplicationService receives application ports; InMemoryHotelComponentsFactory wires adapters at the composition root. |
 
 ## Pattern inventory
 
@@ -30,7 +30,7 @@ JavaFX nodes live under presentation.javafx; ReservationController handles UI ac
 |---|---|---|---|
 | Composite | A service package can contain single services or nested packages and be priced as one option. | ServiceOption, AdditionalService, ServicePackage. | Implemented: reservations/services integration. |
 | Decorator | Add service costs to an accommodation price without changing the room-price calculator. | PriceComponent, RoomStayPrice, ServicePriceDecorator. | Implemented: reservations/pricing. |
-| Adapter | Present a stable application payment contract over the virtual-card wallet API. | PaymentGateway, VirtualCardWallet, VirtualCardPaymentAdapter. | Implemented: reservation payment boundary. |
+| Adapter | Translate the reservation payment contract to the narrow payment API provided by the card module. | PaymentGateway, VirtualCardPaymentPort, VirtualCardPaymentAdapter. | Implemented: reservation payment boundary. |
 | Facade | Give the JavaFX controller one API for availability, reservation, guest cancellation, and history. | ReservationFacade, ReservationUseCase. | Implemented: reservations/presentation. |
 
 ### Behavioral
@@ -47,7 +47,8 @@ JavaFX nodes live under presentation.javafx; ReservationController handles UI ac
 - Room administration: room and room-type management use cases.
 - Promotions: eligibility and discount strategies.
 - Loyalty: points ledger, expiry, redemption, and benefits.
-- Admin operations: card recharge authorization. Reservation code provides a separate `HotelReservationAdministrationUseCase` contract for hotel-initiated cancellation and its 100% refund policy; authorization belongs to the admin module.
+- Cards/payments: the card module supplies the production implementation of `VirtualCardPaymentPort`; `InMemoryVirtualCardPaymentPort` only seeds a demo account and simulates charges, refunds, and movements without card administration or recharge operations.
+- Admin operations: card recharge authorization and card management. Reservation code provides a `CardRechargeUseCase` integration contract only; its demo payment adapter does not implement recharges. Reservation code also provides a separate `HotelReservationAdministrationUseCase` for hotel-initiated cancellation and its 100% refund policy; authorization belongs to the admin module.
 - Reporting: reservation, occupancy, revenue, service, recharge, refund, and loyalty queries; TXT/PDF exporters and JavaFX charts.
 
 These are integration points, not substitutes for teammates’ complete modules.
