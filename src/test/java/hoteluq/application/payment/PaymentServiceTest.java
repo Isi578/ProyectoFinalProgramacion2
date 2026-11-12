@@ -3,8 +3,11 @@ package com.hoteluq.application.payment;
 import com.hoteluq.domain.model.PaymentReceipt;
 import com.hoteluq.domain.model.PaymentMovement;
 import com.hoteluq.domain.model.PaymentMovementType;
+import com.hoteluq.domain.model.PaymentMovementStatus;
 import com.hoteluq.domain.model.VirtualCard;
+import com.hoteluq.application.port.PaymentGateway;
 import com.hoteluq.application.port.PaymentMovementRepository;
+import com.hoteluq.application.port.VirtualCardRepository;
 import com.hoteluq.infrastructure.memory.InMemoryPaymentMovementRepository;
 import com.hoteluq.infrastructure.memory.InMemoryVirtualCardRepository;
 import com.hoteluq.infrastructure.payment.InMemoryVirtualCardPaymentPort;
@@ -13,9 +16,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -85,6 +92,16 @@ class PaymentServiceTest {
                 () -> paymentService.charge(
                         "charge-missing", "CARD-MISSING", CUSTOMER_ID, new BigDecimal("20.00")));
         assertEquals(0, movements.findAll().size());
+    }
+
+    @Test
+    void rejectsChargeWhenCardBelongsToAnotherCustomer() {
+        assertThrows(PaymentDeclinedException.class,
+                () -> paymentService.charge(
+                        "charge-wrong-owner", CARD_ID, "CUSTOMER-OTHER",
+                        new BigDecimal("20.00")));
+        assertEquals(0, movements.findAll().size());
+        assertEquals(0, new BigDecimal("1000.00").compareTo(paymentService.getBalance(CARD_ID)));
     }
 
     @Test
@@ -190,6 +207,44 @@ class PaymentServiceTest {
     }
 
     @Test
+    void rejectsBlankRechargeAdministratorId() {
+        assertThrows(PaymentDeclinedException.class,
+                () -> paymentService.recharge(" ", CARD_ID, new BigDecimal("25.00")));
+        assertEquals(0, movements.findAll().size());
+    }
+
+    @Test
+    void rejectsRechargeForMissingCard() {
+        assertThrows(PaymentDeclinedException.class,
+                () -> paymentService.recharge(ADMIN_ID, "CARD-MISSING", new BigDecimal("25.00")));
+        assertEquals(0, movements.findAll().size());
+    }
+
+    @Test
+    void rejectsRechargeForInactiveCard() {
+        addCard("CARD-INACTIVE-RECHARGE", new BigDecimal("100.00"), false);
+
+        assertThrows(InactiveCardException.class,
+                () -> paymentService.recharge(
+                        ADMIN_ID, "CARD-INACTIVE-RECHARGE", new BigDecimal("25.00")));
+        assertEquals(0, movements.findAll().size());
+        assertEquals(0, new BigDecimal("100.00").compareTo(
+                cards.findById("CARD-INACTIVE-RECHARGE").orElseThrow().getBalance()));
+    }
+
+    @Test
+    void rejectsInvalidRechargeAmounts() {
+        assertThrows(PaymentDeclinedException.class,
+                () -> paymentService.recharge(ADMIN_ID, CARD_ID, BigDecimal.ZERO));
+        assertThrows(PaymentDeclinedException.class,
+                () -> paymentService.recharge(ADMIN_ID, CARD_ID, new BigDecimal("-1.00")));
+        assertThrows(PaymentDeclinedException.class,
+                () -> paymentService.recharge(ADMIN_ID, CARD_ID, null));
+        assertEquals(0, movements.findAll().size());
+        assertEquals(0, new BigDecimal("1000.00").compareTo(paymentService.getBalance(CARD_ID)));
+    }
+
+    @Test
     void refundsCompletelyAndRecordsRefundMovement() {
         PaymentReceipt receipt = paymentService.charge(
                 "charge-to-refund", CARD_ID, CUSTOMER_ID, new BigDecimal("125.00"));
@@ -261,49 +316,13 @@ class PaymentServiceTest {
     }
 
     @Test
-    void doesNotChangeBalanceWhenMovementPersistenceFailsAfterWriting() {
+    void movementIntentFailureDoesNotCallGatewayOrChangeBalance() {
         InMemoryPaymentMovementRepository persistedMovements =
                 new InMemoryPaymentMovementRepository();
-        PaymentMovementRepository failingMovements = new PaymentMovementRepository() {
-            private boolean failOnSave = true;
-
-            @Override
-            public PaymentMovement save(PaymentMovement movement) {
-                PaymentMovement saved = persistedMovements.save(movement);
-                if (failOnSave) {
-                    failOnSave = false;
-                    throw new IllegalStateException("Simulated failure after movement write.");
-                }
-                return saved;
-            }
-
-            @Override
-            public void deleteById(String movementId) {
-                persistedMovements.deleteById(movementId);
-            }
-
-            @Override
-            public List<PaymentMovement> findByCardId(String cardId) {
-                return persistedMovements.findByCardId(cardId);
-            }
-
-            @Override
-            public List<PaymentMovement> findByRelatedChargeId(String relatedChargeId) {
-                return persistedMovements.findByRelatedChargeId(relatedChargeId);
-            }
-
-            @Override
-            public java.util.Optional<PaymentMovement> findByIdempotencyKey(String key) {
-                return persistedMovements.findByIdempotencyKey(key);
-            }
-
-            @Override
-            public List<PaymentMovement> findAll() {
-                return persistedMovements.findAll();
-            }
-        };
-        PaymentService service = new PaymentService(
-                new VirtualCardPaymentAdapter(cardPayments), cards, failingMovements);
+        PaymentMovementRepository failingMovements =
+                failingMovementRepository(persistedMovements, 1, false);
+        CountingIdempotentGateway gateway = new CountingIdempotentGateway();
+        PaymentService service = new PaymentService(gateway, cards, failingMovements);
 
         assertThrows(PaymentPersistenceException.class,
                 () -> service.charge(
@@ -313,10 +332,388 @@ class PaymentServiceTest {
         assertEquals(0, new BigDecimal("1000.00").compareTo(
                 cards.findById(CARD_ID).orElseThrow().getBalance()));
         assertEquals(0, persistedMovements.findAll().size());
+        assertEquals(0, gateway.successfulChargeCount);
+    }
+
+    @Test
+    void retryAfterGatewaySuccessAndMovementUpdateFailureDoesNotDuplicateCharge() {
+        InMemoryPaymentMovementRepository persistedMovements =
+                new InMemoryPaymentMovementRepository();
+        PaymentMovementRepository failingMovements =
+                failingMovementRepository(persistedMovements, 2, false);
+        CountingIdempotentGateway gateway = new CountingIdempotentGateway();
+        PaymentService service = new PaymentService(gateway, cards, failingMovements);
+
+        assertThrows(PaymentPersistenceException.class,
+                () -> service.charge(
+                        "charge-movement-update-failure", CARD_ID, CUSTOMER_ID,
+                        new BigDecimal("125.00")));
+        assertEquals(PaymentMovementStatus.PENDING,
+                persistedMovements.findByIdempotencyKey("charge-movement-update-failure")
+                        .orElseThrow().getStatus());
+        assertEquals(0, new BigDecimal("1000.00").compareTo(
+                cards.findById(CARD_ID).orElseThrow().getBalance()));
+
+        PaymentReceipt retry = service.charge(
+                "charge-movement-update-failure", CARD_ID, CUSTOMER_ID,
+                new BigDecimal("125.00"));
+
+        assertEquals(1, gateway.successfulChargeCount);
+        assertEquals(2, gateway.chargeAttemptCount);
+        assertEquals(0, new BigDecimal("875.00").compareTo(
+                cards.findById(CARD_ID).orElseThrow().getBalance()));
+        assertEquals(PaymentMovementStatus.COMPLETED,
+                persistedMovements.findByIdempotencyKey("charge-movement-update-failure")
+                        .orElseThrow().getStatus());
+        assertEquals(retry.getTransactionId(),
+                persistedMovements.findByIdempotencyKey("charge-movement-update-failure")
+                        .orElseThrow().getId());
+    }
+
+    @Test
+    void balanceSaveFailureLeavesRecoverableMovementAndRetryAppliesOnce() {
+        InMemoryPaymentMovementRepository persistedMovements =
+                new InMemoryPaymentMovementRepository();
+        VirtualCardRepository failingCards = failingCardRepository(cards, 1, false);
+        CountingIdempotentGateway gateway = new CountingIdempotentGateway();
+        PaymentService service = new PaymentService(gateway, failingCards, persistedMovements);
+
+        assertThrows(PaymentPersistenceException.class,
+                () -> service.charge(
+                        "charge-card-save-failure", CARD_ID, CUSTOMER_ID,
+                        new BigDecimal("125.00")));
+        assertEquals(0, new BigDecimal("1000.00").compareTo(
+                cards.findById(CARD_ID).orElseThrow().getBalance()));
+        assertEquals(PaymentMovementStatus.EXTERNAL_SUCCEEDED,
+                persistedMovements.findByIdempotencyKey("charge-card-save-failure")
+                        .orElseThrow().getStatus());
+
+        service.charge("charge-card-save-failure", CARD_ID, CUSTOMER_ID,
+                new BigDecimal("125.00"));
+        assertEquals(1, gateway.successfulChargeCount);
+        assertEquals(0, new BigDecimal("875.00").compareTo(
+                cards.findById(CARD_ID).orElseThrow().getBalance()));
+        assertEquals(1, persistedMovements.findAll().size());
+        assertEquals(PaymentMovementStatus.COMPLETED,
+                persistedMovements.findByIdempotencyKey("charge-card-save-failure")
+                        .orElseThrow().getStatus());
+    }
+
+    @Test
+    void refundRetryAfterCardSaveFailureDoesNotCreditTwice() {
+        PaymentReceipt charge = paymentService.charge(
+                "charge-before-refund-retry", CARD_ID, CUSTOMER_ID,
+                new BigDecimal("125.00"));
+        VirtualCardRepository failingCards = failingCardRepository(cards, 1, false);
+        PaymentService service = new PaymentService(
+                new VirtualCardPaymentAdapter(cardPayments), failingCards, movements);
+
+        assertThrows(PaymentPersistenceException.class,
+                () -> service.refund(
+                        "refund-card-save-failure", charge, new BigDecimal("40.00")));
+        assertEquals(0, new BigDecimal("875.00").compareTo(
+                cards.findById(CARD_ID).orElseThrow().getBalance()));
+
+        service.refund("refund-card-save-failure", charge, new BigDecimal("40.00"));
+
+        assertEquals(0, new BigDecimal("915.00").compareTo(
+                cards.findById(CARD_ID).orElseThrow().getBalance()));
+        assertEquals(1, movements.findByRelatedChargeId(charge.getTransactionId()).stream()
+                .filter(movement -> movement.getType() == PaymentMovementType.REFUND).count());
+    }
+
+    @Test
+    void refundRetryAfterAmbiguousGatewayResultDoesNotRefundExternallyTwice() {
+        CountingIdempotentGateway gateway = new CountingIdempotentGateway();
+        PaymentService service = new PaymentService(gateway, cards, movements);
+        PaymentReceipt charge = service.charge(
+                "charge-before-ambiguous-refund", CARD_ID, CUSTOMER_ID,
+                new BigDecimal("125.00"));
+        gateway.failAfterFirstSuccessfulRefund = true;
+
+        assertThrows(PaymentGatewayException.class,
+                () -> service.refund(
+                        "ambiguous-refund", charge, new BigDecimal("40.00")));
+        assertEquals(0, new BigDecimal("875.00").compareTo(
+                cards.findById(CARD_ID).orElseThrow().getBalance()));
+
+        service.refund("ambiguous-refund", charge, new BigDecimal("40.00"));
+
+        assertEquals(1, gateway.successfulRefundCount);
+        assertEquals(2, gateway.refundAttemptCount);
+        assertEquals(0, new BigDecimal("915.00").compareTo(
+                cards.findById(CARD_ID).orElseThrow().getBalance()));
+        assertEquals(1, movements.findByRelatedChargeId(charge.getTransactionId()).stream()
+                .filter(movement -> movement.getType() == PaymentMovementType.REFUND).count());
+    }
+
+    @Test
+    void refundRetryAfterJournalUpdateFailureDoesNotRepeatExternalRefund() {
+        CountingIdempotentGateway gateway = new CountingIdempotentGateway();
+        PaymentService chargeService = new PaymentService(gateway, cards, movements);
+        PaymentReceipt charge = chargeService.charge(
+                "charge-before-journal-refund-failure", CARD_ID, CUSTOMER_ID,
+                new BigDecimal("125.00"));
+        PaymentMovementRepository failingMovements =
+                failingMovementRepository(movements, 2, false);
+        PaymentService refundService = new PaymentService(gateway, cards, failingMovements);
+
+        assertThrows(PaymentPersistenceException.class,
+                () -> refundService.refund(
+                        "refund-journal-update-failure", charge, new BigDecimal("40.00")));
+        assertEquals(0, new BigDecimal("875.00").compareTo(
+                cards.findById(CARD_ID).orElseThrow().getBalance()));
+
+        refundService.refund("refund-journal-update-failure", charge, new BigDecimal("40.00"));
+
+        assertEquals(1, gateway.successfulRefundCount);
+        assertEquals(2, gateway.refundAttemptCount);
+        assertEquals(0, new BigDecimal("915.00").compareTo(
+                cards.findById(CARD_ID).orElseThrow().getBalance()));
+        assertEquals(1, movements.findByRelatedChargeId(charge.getTransactionId()).stream()
+                .filter(movement -> movement.getType() == PaymentMovementType.REFUND).count());
+    }
+
+    @Test
+    void journalWriteThatThrowsAfterPersistenceIsRecoveredWithoutDuplicateMovement() {
+        InMemoryPaymentMovementRepository persistedMovements =
+                new InMemoryPaymentMovementRepository();
+        PaymentMovementRepository failingMovements =
+                failingMovementRepository(persistedMovements, 2, true);
+        CountingIdempotentGateway gateway = new CountingIdempotentGateway();
+        PaymentService service = new PaymentService(gateway, cards, failingMovements);
+
+        PaymentReceipt receipt = service.charge(
+                "charge-journal-write-then-throw", CARD_ID, CUSTOMER_ID,
+                new BigDecimal("125.00"));
+        PaymentReceipt retry = service.charge(
+                "charge-journal-write-then-throw", CARD_ID, CUSTOMER_ID,
+                new BigDecimal("125.00"));
+
+        assertEquals(receipt.getTransactionId(), retry.getTransactionId());
+        assertEquals(1, gateway.successfulChargeCount);
+        assertEquals(0, new BigDecimal("875.00").compareTo(
+                cards.findById(CARD_ID).orElseThrow().getBalance()));
+        assertEquals(1, persistedMovements.findAll().size());
+        assertEquals(PaymentMovementStatus.COMPLETED,
+                persistedMovements.findByIdempotencyKey(
+                        "charge-journal-write-then-throw").orElseThrow().getStatus());
+    }
+
+    @Test
+    void rechargeRetryAfterAmbiguousGatewayResultUpdatesLocalBalanceOnce() {
+        CountingIdempotentGateway gateway = new CountingIdempotentGateway();
+        PaymentService service = new PaymentService(
+                gateway, cards, movements, Set.of(ADMIN_ID));
+        gateway.failAfterFirstSuccessfulRecharge = true;
+
+        assertThrows(PaymentGatewayException.class,
+                () -> service.recharge(
+                        "ambiguous-recharge", ADMIN_ID, CARD_ID, new BigDecimal("50.00")));
+        assertEquals(0, new BigDecimal("1000.00").compareTo(
+                cards.findById(CARD_ID).orElseThrow().getBalance()));
+
+        service.recharge("ambiguous-recharge", ADMIN_ID, CARD_ID, new BigDecimal("50.00"));
+
+        assertEquals(1, gateway.successfulRechargeCount);
+        assertEquals(2, gateway.rechargeAttemptCount);
+        assertEquals(0, new BigDecimal("1050.00").compareTo(
+                cards.findById(CARD_ID).orElseThrow().getBalance()));
+        assertEquals(1, movements.findByCardId(CARD_ID).size());
+    }
+
+    @Test
+    void cardRepositoryFailureAfterWriteIsDetectedWithoutApplyingBalanceTwice() {
+        VirtualCardRepository failingCards = failingCardRepository(cards, 1, true);
+        InMemoryPaymentMovementRepository persistedMovements =
+                new InMemoryPaymentMovementRepository();
+        PaymentService service = new PaymentService(
+                new VirtualCardPaymentAdapter(cardPayments), failingCards, persistedMovements);
+
+        service.charge("card-save-after-write", CARD_ID, CUSTOMER_ID,
+                new BigDecimal("125.00"));
+        service.charge("card-save-after-write", CARD_ID, CUSTOMER_ID,
+                new BigDecimal("125.00"));
+
+        assertEquals(0, new BigDecimal("875.00").compareTo(
+                cards.findById(CARD_ID).orElseThrow().getBalance()));
+        assertEquals(1, persistedMovements.findAll().size());
+    }
+
+    @Test
+    void ambiguousExternalChargeFailureCanBeRetriedWithoutSecondExternalCharge() {
+        CountingIdempotentGateway gateway = new CountingIdempotentGateway();
+        gateway.failAfterFirstSuccessfulCharge = true;
+        PaymentService service = new PaymentService(gateway, cards, movements);
+
+        assertThrows(PaymentGatewayException.class,
+                () -> service.charge(
+                        "ambiguous-external-charge", CARD_ID, CUSTOMER_ID,
+                        new BigDecimal("125.00")));
+        PaymentReceipt retry = service.charge(
+                "ambiguous-external-charge", CARD_ID, CUSTOMER_ID,
+                new BigDecimal("125.00"));
+
+        assertNotNull(retry);
+        assertEquals(1, gateway.successfulChargeCount);
+        assertEquals(2, gateway.chargeAttemptCount);
+        assertEquals(0, new BigDecimal("875.00").compareTo(
+                cards.findById(CARD_ID).orElseThrow().getBalance()));
     }
 
     private void addCard(String cardId, BigDecimal balance, boolean active) {
         cards.save(new VirtualCard(
                 cardId, CUSTOMER_ID, balance, active, LocalDateTime.now()));
+    }
+
+    private static PaymentMovementRepository failingMovementRepository(
+            PaymentMovementRepository delegate, int failOnSaveNumber, boolean failAfterWrite) {
+        return new PaymentMovementRepository() {
+            private int saveCount;
+
+            @Override
+            public PaymentMovement save(PaymentMovement movement) {
+                saveCount++;
+                if (saveCount == failOnSaveNumber && !failAfterWrite) {
+                    throw new IllegalStateException("Simulated movement repository failure.");
+                }
+                PaymentMovement saved = delegate.save(movement);
+                if (saveCount == failOnSaveNumber) {
+                    throw new IllegalStateException("Simulated movement repository failure.");
+                }
+                return saved;
+            }
+
+            @Override
+            public void deleteById(String movementId) {
+                delegate.deleteById(movementId);
+            }
+
+            @Override
+            public List<PaymentMovement> findByCardId(String cardId) {
+                return delegate.findByCardId(cardId);
+            }
+
+            @Override
+            public List<PaymentMovement> findByRelatedChargeId(String relatedChargeId) {
+                return delegate.findByRelatedChargeId(relatedChargeId);
+            }
+
+            @Override
+            public java.util.Optional<PaymentMovement> findByIdempotencyKey(String key) {
+                return delegate.findByIdempotencyKey(key);
+            }
+
+            @Override
+            public List<PaymentMovement> findAll() {
+                return delegate.findAll();
+            }
+        };
+    }
+
+    private static VirtualCardRepository failingCardRepository(
+            VirtualCardRepository delegate, int failOnSaveNumber, boolean failAfterWrite) {
+        return new VirtualCardRepository() {
+            private int saveCount;
+
+            @Override
+            public VirtualCard save(VirtualCard card) {
+                saveCount++;
+                if (saveCount == failOnSaveNumber && !failAfterWrite) {
+                    throw new IllegalStateException("Simulated card repository failure.");
+                }
+                VirtualCard saved = delegate.save(card);
+                if (saveCount == failOnSaveNumber) {
+                    throw new IllegalStateException("Simulated card repository failure.");
+                }
+                return saved;
+            }
+
+            @Override
+            public java.util.Optional<VirtualCard> findById(String cardId) {
+                return delegate.findById(cardId);
+            }
+
+            @Override
+            public List<VirtualCard> findByCustomerId(String customerId) {
+                return delegate.findByCustomerId(customerId);
+            }
+
+            @Override
+            public List<VirtualCard> findAll() {
+                return delegate.findAll();
+            }
+        };
+    }
+
+    private static final class CountingIdempotentGateway implements PaymentGateway {
+        private final Map<String, PaymentReceipt> chargeReceipts = new HashMap<>();
+        private final Set<String> processedRecharges = new java.util.HashSet<>();
+        private final Set<String> processedRefunds = new java.util.HashSet<>();
+        private int chargeAttemptCount;
+        private int successfulChargeCount;
+        private int rechargeAttemptCount;
+        private int successfulRechargeCount;
+        private int refundAttemptCount;
+        private int successfulRefundCount;
+        private boolean failAfterFirstSuccessfulCharge;
+        private boolean failAfterFirstSuccessfulRecharge;
+        private boolean failAfterFirstSuccessfulRefund;
+
+        @Override
+        public PaymentReceipt charge(String cardId, String customerId, BigDecimal amount) {
+            return charge(UUID.randomUUID().toString(), cardId, customerId, amount);
+        }
+
+        @Override
+        public PaymentReceipt charge(
+                String key, String cardId, String customerId, BigDecimal amount) {
+            chargeAttemptCount++;
+            PaymentReceipt receipt = chargeReceipts.get(key);
+            if (receipt == null) {
+                String transactionId = UUID.nameUUIDFromBytes(
+                        key.getBytes(StandardCharsets.UTF_8)).toString();
+                receipt = new PaymentReceipt(transactionId, cardId, amount, LocalDateTime.now());
+                chargeReceipts.put(key, receipt);
+                successfulChargeCount++;
+            }
+            if (failAfterFirstSuccessfulCharge) {
+                failAfterFirstSuccessfulCharge = false;
+                throw new IllegalStateException("Simulated ambiguous external charge result.");
+            }
+            return receipt;
+        }
+
+        @Override
+        public PaymentReceipt charge(String key, String operationReference,
+                                     String cardId, String customerId, BigDecimal amount) {
+            return charge(key, cardId, customerId, amount);
+        }
+
+        @Override
+        public void recharge(String administratorId, String cardId, BigDecimal amount) { }
+
+        @Override
+        public void recharge(String key, String administratorId, String cardId, BigDecimal amount) {
+            rechargeAttemptCount++;
+            if (processedRecharges.add(key)) successfulRechargeCount++;
+            if (failAfterFirstSuccessfulRecharge) {
+                failAfterFirstSuccessfulRecharge = false;
+                throw new IllegalStateException("Simulated ambiguous external recharge result.");
+            }
+        }
+
+        @Override
+        public void refund(PaymentReceipt originalPayment, BigDecimal refundAmount) { }
+
+        @Override
+        public void refund(String key, PaymentReceipt originalPayment, BigDecimal refundAmount) {
+            refundAttemptCount++;
+            if (processedRefunds.add(key)) successfulRefundCount++;
+            if (failAfterFirstSuccessfulRefund) {
+                failAfterFirstSuccessfulRefund = false;
+                throw new IllegalStateException("Simulated ambiguous external refund result.");
+            }
+        }
     }
 }

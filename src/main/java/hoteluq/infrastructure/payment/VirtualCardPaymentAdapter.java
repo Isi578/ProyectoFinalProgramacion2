@@ -30,6 +30,12 @@ public final class VirtualCardPaymentAdapter implements PaymentGateway {
     }
 
     @Override
+    public void recharge(String idempotencyKey, String administratorId,
+                         String cardId, BigDecimal amount) {
+        cardPayments.recharge(idempotencyKey, cardId, amount);
+    }
+
+    @Override
     public void refund(PaymentReceipt originalPayment, BigDecimal refundAmount) {
         cardPayments.refund(originalPayment, refundAmount);
     }

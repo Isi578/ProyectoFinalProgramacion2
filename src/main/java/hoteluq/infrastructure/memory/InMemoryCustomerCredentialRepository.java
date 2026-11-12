@@ -14,7 +14,9 @@ public final class InMemoryCustomerCredentialRepository implements CustomerCrede
         requireText(customerId, "Customer id");
         requireText(salt, "Password salt");
         requireText(passwordHash, "Password hash");
-        credentials.put(customerId, new Credential(salt, passwordHash));
+        if (credentials.putIfAbsent(customerId, new Credential(salt, passwordHash)) != null) {
+            throw new IllegalArgumentException("Customer credentials already exist.");
+        }
     }
 
     @Override

@@ -23,6 +23,8 @@ The application starts with sample rooms, a guest, a virtual card, and additiona
 Demo guest ID: GUEST-ANA-001
 Demo card ID: CARD-ANA-001
 
+Customer credentials, card balances, payment movements, reservations, and other demo data use in-memory repositories and are lost when the application restarts. The configured administrator ID is a demonstration allowlist, not secure user authentication.
+
 ## Architecture
 
 - domain: hotel entities, reservation lifecycle and pricing

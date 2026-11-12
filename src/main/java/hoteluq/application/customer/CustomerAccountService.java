@@ -60,6 +60,20 @@ public final class CustomerAccountService implements CustomerAccountUseCase {
         return customer;
     }
 
+    public synchronized void initializeCredentialsForExistingCustomer(
+            String customerId, String password) {
+        String normalizedCustomerId = requireText(customerId, "Customer id");
+        requireText(password, "Password");
+        Customer customer = customerCatalog.findById(normalizedCustomerId)
+                .orElseThrow(() -> new IllegalArgumentException("Customer does not exist."));
+        if (credentialRepository.findByCustomerId(customer.getId()).isPresent()) {
+            throw new IllegalArgumentException("Customer credentials are already initialized.");
+        }
+
+        String salt = newSalt();
+        credentialRepository.save(customer.getId(), salt, hashPassword(password, salt));
+    }
+
     @Override
     public Customer authenticate(String email, String password) {
         String normalizedEmail = normalizeAndValidateEmail(email);

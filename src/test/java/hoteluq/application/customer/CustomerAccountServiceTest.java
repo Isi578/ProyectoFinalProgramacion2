@@ -56,6 +56,23 @@ class CustomerAccountServiceTest {
     }
 
     @Test
+    void rejectsAuthenticationForUnknownCustomer() {
+        assertThrows(InvalidCredentialsException.class,
+                () -> accounts.authenticate("missing@example.com", "secret123"));
+    }
+
+    @Test
+    void hashesEqualPasswordsWithDifferentSalts() {
+        var first = accounts.register("First Customer", "first@example.com", "secret123");
+        var second = accounts.register("Second Customer", "second@example.com", "secret123");
+
+        var firstCredential = credentials.findByCustomerId(first.getId()).orElseThrow();
+        var secondCredential = credentials.findByCustomerId(second.getId()).orElseThrow();
+        assertNotEquals(firstCredential.salt(), secondCredential.salt());
+        assertNotEquals(firstCredential.passwordHash(), secondCredential.passwordHash());
+    }
+
+    @Test
     void rejectsMissingRequiredRegistrationData() {
         assertThrows(IllegalArgumentException.class,
                 () -> accounts.register(" ", "valid@example.com", "secret123"));

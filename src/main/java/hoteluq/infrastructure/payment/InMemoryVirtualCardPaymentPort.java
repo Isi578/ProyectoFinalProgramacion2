@@ -5,6 +5,7 @@ import com.hoteluq.application.port.VirtualCardPaymentPort;
 import com.hoteluq.domain.model.PaymentReceipt;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -23,13 +24,25 @@ public final class InMemoryVirtualCardPaymentPort implements VirtualCardPaymentP
     public PaymentReceipt charge(String idempotencyKey, String cardId,
                                  String customerId, BigDecimal amount) {
         requireText(idempotencyKey, "Idempotency key");
-        return charge(cardId, customerId, amount);
+        requireText(cardId, "Card id");
+        requireText(customerId, "Customer id");
+        validatePositiveAmount(amount);
+        String transactionId = UUID.nameUUIDFromBytes(
+                ("hotel-uq-charge:" + idempotencyKey.trim()).getBytes(StandardCharsets.UTF_8))
+                .toString();
+        return new PaymentReceipt(transactionId, cardId.trim(), amount, LocalDateTime.now());
     }
 
     @Override
     public void recharge(String cardId, BigDecimal amount) {
         requireText(cardId, "Card id");
         validatePositiveAmount(amount);
+    }
+
+    @Override
+    public void recharge(String idempotencyKey, String cardId, BigDecimal amount) {
+        requireText(idempotencyKey, "Idempotency key");
+        recharge(cardId, amount);
     }
 
     @Override

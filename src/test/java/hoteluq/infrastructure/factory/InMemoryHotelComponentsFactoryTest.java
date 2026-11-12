@@ -1,6 +1,7 @@
 package com.hoteluq.infrastructure.factory;
 
 import com.hoteluq.application.payment.PaymentDeclinedException;
+import com.hoteluq.application.customer.InvalidCredentialsException;
 import com.hoteluq.domain.model.PaymentMovementType;
 import org.junit.jupiter.api.Test;
 
@@ -34,5 +35,18 @@ class InMemoryHotelComponentsFactoryTest {
                 () -> components.getCardRechargeUseCase().recharge(
                         "GUEST-ANA-001", CARD_ID, new BigDecimal("250.00")));
         assertEquals(0, components.getPaymentMovementRepository().findAll().size());
+    }
+
+    @Test
+    void demoCustomerCanAuthenticateAndRejectsIncorrectPassword() {
+        HotelComponents components = new InMemoryHotelComponentsFactory().createComponents();
+
+        var customer = components.getCustomerAccountUseCase().authenticate(
+                "ANA@example.com", InMemoryHotelComponentsFactory.DEMO_CUSTOMER_PASSWORD);
+
+        assertEquals("GUEST-ANA-001", customer.getId());
+        assertThrows(InvalidCredentialsException.class,
+                () -> components.getCustomerAccountUseCase().authenticate(
+                        "ana@example.com", "incorrect-demo-password"));
     }
 }

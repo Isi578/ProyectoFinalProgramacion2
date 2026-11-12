@@ -12,6 +12,7 @@ public final class PaymentMovement {
     private final LocalDateTime occurredAt;
     private final String idempotencyKey;
     private final String operationReference;
+    private final PaymentMovementStatus status;
 
     public PaymentMovement(String id, String cardId, PaymentMovementType type,
                            BigDecimal amount, String relatedChargeId, LocalDateTime occurredAt) {
@@ -27,6 +28,14 @@ public final class PaymentMovement {
     public PaymentMovement(String id, String cardId, PaymentMovementType type,
                            BigDecimal amount, String relatedChargeId, LocalDateTime occurredAt,
                            String idempotencyKey, String operationReference) {
+        this(id, cardId, type, amount, relatedChargeId, occurredAt,
+                idempotencyKey, operationReference, PaymentMovementStatus.COMPLETED);
+    }
+
+    public PaymentMovement(String id, String cardId, PaymentMovementType type,
+                           BigDecimal amount, String relatedChargeId, LocalDateTime occurredAt,
+                           String idempotencyKey, String operationReference,
+                           PaymentMovementStatus status) {
         this.id = id;
         this.cardId = cardId;
         this.type = type;
@@ -35,6 +44,7 @@ public final class PaymentMovement {
         this.occurredAt = occurredAt;
         this.idempotencyKey = idempotencyKey;
         this.operationReference = operationReference;
+        this.status = status;
     }
 
     public String getId() { return id; }
@@ -45,4 +55,11 @@ public final class PaymentMovement {
     public LocalDateTime getOccurredAt() { return occurredAt; }
     public String getIdempotencyKey() { return idempotencyKey; }
     public String getOperationReference() { return operationReference; }
+    public PaymentMovementStatus getStatus() { return status; }
+
+    public PaymentMovement withState(
+            String movementId, LocalDateTime timestamp, PaymentMovementStatus newStatus) {
+        return new PaymentMovement(movementId, cardId, type, amount, relatedChargeId,
+                timestamp, idempotencyKey, operationReference, newStatus);
+    }
 }

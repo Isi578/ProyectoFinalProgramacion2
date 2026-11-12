@@ -16,20 +16,36 @@ public final class InMemoryPaymentMovementRepository implements PaymentMovementR
     @Override
     public synchronized PaymentMovement save(PaymentMovement movement) {
         if (movement == null) throw new IllegalArgumentException("Payment movement is required.");
-        if (movement.getIdempotencyKey() != null) {
-            PaymentMovement existing = movementsByIdempotencyKey.get(movement.getIdempotencyKey());
-            if (existing != null && !existing.getId().equals(movement.getId())) {
-                throw new IllegalArgumentException("Idempotency key is already recorded.");
-            }
+        PaymentMovement existingByKey = movement.getIdempotencyKey() == null
+                ? null : movementsByIdempotencyKey.get(movement.getIdempotencyKey());
+        if (existingByKey != null && !isValidOperationUpdate(existingByKey, movement)) {
+            throw new IllegalArgumentException("Idempotency key is already recorded for another operation.");
         }
-        PaymentMovement existingMovement = movements.putIfAbsent(movement.getId(), movement);
-        if (existingMovement != null && existingMovement != movement) {
+        PaymentMovement existingMovement = movements.get(movement.getId());
+        if (existingMovement != null && existingMovement != movement
+                && existingMovement != existingByKey) {
             throw new IllegalArgumentException("Payment movement id is already recorded.");
         }
+        if (existingByKey != null && !existingByKey.getId().equals(movement.getId())) {
+            movements.remove(existingByKey.getId(), existingByKey);
+        }
+        movements.put(movement.getId(), movement);
         if (movement.getIdempotencyKey() != null) {
             movementsByIdempotencyKey.put(movement.getIdempotencyKey(), movement);
         }
         return movement;
+    }
+
+    private static boolean isValidOperationUpdate(
+            PaymentMovement previous, PaymentMovement updated) {
+        return previous.getType() == updated.getType()
+                && previous.getCardId().equals(updated.getCardId())
+                && previous.getAmount().compareTo(updated.getAmount()) == 0
+                && java.util.Objects.equals(
+                        previous.getRelatedChargeId(), updated.getRelatedChargeId())
+                && java.util.Objects.equals(
+                        previous.getOperationReference(), updated.getOperationReference())
+                && updated.getStatus().ordinal() >= previous.getStatus().ordinal();
     }
 
     @Override

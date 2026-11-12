@@ -30,6 +30,7 @@ import java.util.Set;
 
 public final class InMemoryHotelComponentsFactory implements HotelComponentsFactory {
     static final String DEMO_ADMINISTRATOR_ID = "ADMIN-HOTEL-001";
+    static final String DEMO_CUSTOMER_PASSWORD = "HotelUQ-Demo-Only-2026!";
 
     @Override
     public HotelComponents createComponents() {
@@ -68,13 +69,18 @@ public final class InMemoryHotelComponentsFactory implements HotelComponentsFact
 
         InMemoryCustomerCatalog customerCatalog = new InMemoryCustomerCatalog(List.of(
                 new Customer("GUEST-ANA-001", "Ana Pérez", "ana@example.com")));
+        InMemoryCustomerCredentialRepository customerCredentialRepository =
+                new InMemoryCustomerCredentialRepository();
+        CustomerAccountService customerAccountService =
+                new CustomerAccountService(customerCatalog, customerCredentialRepository);
+        customerAccountService.initializeCredentialsForExistingCustomer(
+                "GUEST-ANA-001", DEMO_CUSTOMER_PASSWORD);
         return new HotelComponents(
                 new InMemoryRoomCatalog(rooms),
                 new InMemoryReservationRepository(),
                 new InMemoryServiceCatalog(List.of(breakfast, parking, spa, wellnessPackage)),
                 customerCatalog,
-                new CustomerAccountService(
-                        customerCatalog, new InMemoryCustomerCredentialRepository()),
+                customerAccountService,
                 paymentGateway,
                 cardRechargeUseCase,
                 movementRepository);

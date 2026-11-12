@@ -6,6 +6,7 @@ import com.hoteluq.application.port.PaymentMovementRepository;
 import com.hoteluq.application.port.VirtualCardRepository;
 import com.hoteluq.domain.model.PaymentReceipt;
 import com.hoteluq.domain.model.PaymentMovement;
+import com.hoteluq.domain.model.PaymentMovementStatus;
 import com.hoteluq.domain.model.PaymentMovementType;
 import com.hoteluq.domain.model.VirtualCard;
 
@@ -62,7 +63,7 @@ public final class PaymentService implements CardRechargeUseCase, PaymentGateway
     public synchronized PaymentReceipt charge(
             String idempotencyKey, String operationReference, String cardId,
             String customerId, BigDecimal amount) {
-        requireText(idempotencyKey, "Idempotency key");
+        String key = requiredText(idempotencyKey, "Idempotency key");
         requireText(customerId, "Customer id");
         validatePositiveAmount(amount);
 
@@ -72,37 +73,34 @@ public final class PaymentService implements CardRechargeUseCase, PaymentGateway
         }
 
         PaymentMovement priorCharge = movementRepository
-                .findByIdempotencyKey(idempotencyKey.trim())
+                .findByIdempotencyKey(key)
                 .orElse(null);
         if (priorCharge != null) {
-            if (priorCharge.getType() != PaymentMovementType.CHARGE
-                    || !priorCharge.getCardId().equals(card.getCardId())
-                    || priorCharge.getAmount().compareTo(amount) != 0
-                    || !java.util.Objects.equals(
-                            priorCharge.getOperationReference(), operationReference)) {
-                throw new PaymentDeclinedException(
-                        "Idempotency key was already used for a different transaction.");
-            }
-            return new PaymentReceipt(priorCharge.getId(), priorCharge.getCardId(),
-                    priorCharge.getAmount(), priorCharge.getOccurredAt());
+            validateSameOperation(priorCharge, PaymentMovementType.CHARGE, card.getCardId(),
+                    amount, null, operationReference);
+            return finishCharge(priorCharge, card, key, customerId.trim(), operationReference);
         }
 
         if (!card.isActive()) {
             throw new InactiveCardException("Virtual card is inactive.");
         }
         validateCardBalance(card);
-        if (card.getBalance().compareTo(amount) < 0) {
+        BigDecimal reservedCharges = movementRepository.findByCardId(card.getCardId()).stream()
+                .filter(movement -> movement.getType() == PaymentMovementType.CHARGE)
+                .filter(movement -> movement.getIdempotencyKey() != null)
+                .filter(movement -> !card.hasAppliedPaymentOperation(
+                        movement.getIdempotencyKey()))
+                .map(PaymentMovement::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (card.getBalance().subtract(reservedCharges).compareTo(amount) < 0) {
             throw new InsufficientBalanceException("Virtual card has insufficient balance.");
         }
 
-        PaymentReceipt receipt = paymentGateway.charge(
-                idempotencyKey.trim(), card.getCardId(), customerId.trim(), amount);
-        PaymentMovement movement = new PaymentMovement(
-                receipt.getTransactionId(), card.getCardId(), PaymentMovementType.CHARGE,
-                amount, null, receipt.getPaidAt(), idempotencyKey.trim(), operationReference);
-        updateBalanceAndRecordMovement(
-                card, card.getBalance().subtract(amount), movement);
-        return receipt;
+        PaymentMovement intent = new PaymentMovement(
+                key, card.getCardId(), PaymentMovementType.CHARGE, amount, null,
+                LocalDateTime.now(), key, operationReference, PaymentMovementStatus.PENDING);
+        intent = saveOperationIntent(intent);
+        return finishCharge(intent, card, key, customerId.trim(), operationReference);
     }
 
     public BigDecimal getBalance(String cardId) {
@@ -111,7 +109,14 @@ public final class PaymentService implements CardRechargeUseCase, PaymentGateway
 
     @Override
     public synchronized void recharge(String administratorId, String cardId, BigDecimal amount) {
+        recharge(UUID.randomUUID().toString(), administratorId, cardId, amount);
+    }
+
+    @Override
+    public synchronized void recharge(
+            String idempotencyKey, String administratorId, String cardId, BigDecimal amount) {
         requireAuthorizedAdministrator(administratorId);
+        String key = requiredText(idempotencyKey, "Idempotency key");
         validatePositiveAmount(amount);
         VirtualCard card = findCard(cardId);
         if (!card.isActive()) {
@@ -119,11 +124,30 @@ public final class PaymentService implements CardRechargeUseCase, PaymentGateway
         }
         validateCardBalance(card);
 
-        paymentGateway.recharge(administratorId.trim(), card.getCardId(), amount);
-        PaymentMovement movement = new PaymentMovement(
-                UUID.randomUUID().toString(), card.getCardId(), PaymentMovementType.RECHARGE,
-                amount, null, LocalDateTime.now());
-        updateBalanceAndRecordMovement(card, card.getBalance().add(amount), movement);
+        PaymentMovement movement = movementRepository.findByIdempotencyKey(key).orElse(null);
+        if (movement != null) {
+            validateSameOperation(movement, PaymentMovementType.RECHARGE, card.getCardId(),
+                    amount, null, administratorId.trim());
+        } else {
+            movement = saveOperationIntent(new PaymentMovement(
+                    key, card.getCardId(), PaymentMovementType.RECHARGE, amount, null,
+                    LocalDateTime.now(), key, administratorId.trim(),
+                    PaymentMovementStatus.PENDING));
+        }
+
+        if (movement.getStatus() == PaymentMovementStatus.PENDING) {
+            try {
+                paymentGateway.recharge(
+                        key, administratorId.trim(), card.getCardId(), amount);
+            } catch (RuntimeException gatewayFailure) {
+                throw new PaymentGatewayException(
+                        "Recharge outcome is unknown; retry with the same idempotency key.",
+                        gatewayFailure);
+            }
+            movement = markExternalSuccess(movement, movement.getId(), LocalDateTime.now());
+        }
+        applyOperationBalance(card, movement, amount);
+        markCompleted(movement);
     }
 
     public List<PaymentMovement> getMovements(String cardId) {
@@ -142,7 +166,7 @@ public final class PaymentService implements CardRechargeUseCase, PaymentGateway
     @Override
     public synchronized void refund(
             String idempotencyKey, PaymentReceipt originalPayment, BigDecimal refundAmount) {
-        requireText(idempotencyKey, "Idempotency key");
+        String key = requiredText(idempotencyKey, "Idempotency key");
         requireOriginalPayment(originalPayment);
         validatePositiveAmount(refundAmount);
         if (refundAmount.compareTo(originalPayment.getAmount()) > 0) {
@@ -150,17 +174,25 @@ public final class PaymentService implements CardRechargeUseCase, PaymentGateway
         }
 
         PaymentMovement priorRefund = movementRepository
-                .findByIdempotencyKey(idempotencyKey.trim())
+                .findByIdempotencyKey(key)
                 .orElse(null);
         if (priorRefund != null) {
-            if (priorRefund.getType() != PaymentMovementType.REFUND
-                    || !priorRefund.getCardId().equals(originalPayment.getCardId())
-                    || !originalPayment.getTransactionId().equals(priorRefund.getRelatedChargeId())
-                    || priorRefund.getAmount().compareTo(refundAmount) != 0) {
-                throw new PaymentDeclinedException(
-                        "Idempotency key was already used for a different transaction.");
-            }
+            validateSameOperation(priorRefund, PaymentMovementType.REFUND,
+                    originalPayment.getCardId(), refundAmount,
+                    originalPayment.getTransactionId(), null);
+            finishRefund(priorRefund, originalPayment, refundAmount, key);
             return;
+        }
+
+        PaymentMovement originalCharge = movementRepository.findByCardId(
+                        originalPayment.getCardId()).stream()
+                .filter(movement -> movement.getType() == PaymentMovementType.CHARGE)
+                .filter(movement -> movement.getId().equals(originalPayment.getTransactionId()))
+                .findFirst()
+                .orElseThrow(() -> new PaymentDeclinedException(
+                        "Original card charge was not found."));
+        if (originalCharge.getAmount().compareTo(originalPayment.getAmount()) != 0) {
+            throw new PaymentDeclinedException("Original payment data does not match the recorded charge.");
         }
 
         VirtualCard card = findCard(originalPayment.getCardId());
@@ -175,48 +207,148 @@ public final class PaymentService implements CardRechargeUseCase, PaymentGateway
             throw new PaymentDeclinedException("Refund exceeds the remaining refundable amount.");
         }
 
-        paymentGateway.refund(idempotencyKey.trim(), originalPayment, refundAmount);
-        PaymentMovement movement = new PaymentMovement(
-                UUID.randomUUID().toString(), card.getCardId(), PaymentMovementType.REFUND,
-                refundAmount, originalPayment.getTransactionId(), LocalDateTime.now(),
-                idempotencyKey.trim());
-        updateBalanceAndRecordMovement(card, card.getBalance().add(refundAmount), movement);
+        PaymentMovement intent = saveOperationIntent(new PaymentMovement(
+                key, card.getCardId(), PaymentMovementType.REFUND, refundAmount,
+                originalPayment.getTransactionId(), LocalDateTime.now(), key, null,
+                PaymentMovementStatus.PENDING));
+        finishRefund(intent, originalPayment, refundAmount, key);
     }
 
-    private void updateBalanceAndRecordMovement(
-            VirtualCard card, BigDecimal updatedBalance, PaymentMovement movement) {
-        BigDecimal previousBalance = card.getBalance();
+    private PaymentReceipt finishCharge(
+            PaymentMovement movement, VirtualCard card, String idempotencyKey,
+            String customerId, String operationReference) {
+        if (movement.getStatus() == PaymentMovementStatus.PENDING) {
+            PaymentReceipt externalReceipt;
+            try {
+                externalReceipt = paymentGateway.charge(
+                        idempotencyKey, operationReference,
+                        card.getCardId(), customerId, movement.getAmount());
+            } catch (RuntimeException gatewayFailure) {
+                throw new PaymentGatewayException(
+                        "Charge outcome is unknown; retry with the same idempotency key.",
+                        gatewayFailure);
+            }
+            if (externalReceipt == null
+                    || !card.getCardId().equals(externalReceipt.getCardId())
+                    || externalReceipt.getAmount().compareTo(movement.getAmount()) != 0
+                    || externalReceipt.getTransactionId() == null
+                    || externalReceipt.getTransactionId().isBlank()) {
+                throw new PaymentGatewayException(
+                        "Gateway returned an invalid charge receipt; retry with the same idempotency key.",
+                        new IllegalStateException("Invalid gateway receipt."));
+            }
+            movement = markExternalSuccess(
+                    movement, externalReceipt.getTransactionId(), externalReceipt.getPaidAt());
+        }
+        applyOperationBalance(card, movement, movement.getAmount().negate());
+        movement = markCompleted(movement);
+        return new PaymentReceipt(movement.getId(), movement.getCardId(),
+                movement.getAmount(), movement.getOccurredAt());
+    }
+
+    private void finishRefund(
+            PaymentMovement movement, PaymentReceipt originalPayment,
+            BigDecimal refundAmount, String idempotencyKey) {
+        VirtualCard card = findCard(originalPayment.getCardId());
+        if (movement.getStatus() == PaymentMovementStatus.PENDING) {
+            try {
+                paymentGateway.refund(idempotencyKey, originalPayment, refundAmount);
+            } catch (RuntimeException gatewayFailure) {
+                throw new PaymentGatewayException(
+                        "Refund outcome is unknown; retry with the same idempotency key.",
+                        gatewayFailure);
+            }
+            movement = markExternalSuccess(movement, movement.getId(), LocalDateTime.now());
+        }
+        applyOperationBalance(card, movement, refundAmount);
+        markCompleted(movement);
+    }
+
+    private PaymentMovement saveOperationIntent(PaymentMovement intent) {
         try {
-            movementRepository.save(movement);
+            return movementRepository.save(intent);
         } catch (RuntimeException saveFailure) {
-            rollbackMovement(movement, saveFailure);
+            PaymentMovement persisted = movementRepository
+                    .findByIdempotencyKey(intent.getIdempotencyKey()).orElse(null);
+            if (persisted != null) {
+                validateSameOperation(persisted, intent.getType(), intent.getCardId(),
+                        intent.getAmount(), intent.getRelatedChargeId(),
+                        intent.getOperationReference());
+                return persisted;
+            }
             throw new PaymentPersistenceException(
-                    "Payment movement could not be recorded; the operation was not completed.",
+                    "Payment operation could not be registered; no gateway operation was attempted.",
                     saveFailure);
         }
+    }
 
+    private PaymentMovement markExternalSuccess(
+            PaymentMovement movement, String transactionId, LocalDateTime occurredAt) {
+        PaymentMovement externalSuccess = movement.withState(
+                transactionId, occurredAt, PaymentMovementStatus.EXTERNAL_SUCCEEDED);
         try {
-            card.setBalance(updatedBalance);
-            cardRepository.save(card);
-        } catch (RuntimeException balanceFailure) {
-            card.setBalance(previousBalance);
-            try {
-                cardRepository.save(card);
-            } catch (RuntimeException rollbackFailure) {
-                balanceFailure.addSuppressed(rollbackFailure);
+            return movementRepository.save(externalSuccess);
+        } catch (RuntimeException saveFailure) {
+            PaymentMovement persisted = movementRepository
+                    .findByIdempotencyKey(movement.getIdempotencyKey()).orElse(null);
+            if (persisted != null
+                    && persisted.getStatus().ordinal()
+                    >= PaymentMovementStatus.EXTERNAL_SUCCEEDED.ordinal()) {
+                return persisted;
             }
-            rollbackMovement(movement, balanceFailure);
             throw new PaymentPersistenceException(
-                    "Payment state could not be saved consistently; the operation was not completed.",
+                    "Gateway succeeded but its result was not recorded; retry with the same idempotency key.",
+                    saveFailure);
+        }
+    }
+
+    private void applyOperationBalance(
+            VirtualCard card, PaymentMovement movement, BigDecimal balanceChange) {
+        if (card.hasAppliedPaymentOperation(movement.getIdempotencyKey())) return;
+        VirtualCard updatedCard = card.withBalanceChange(
+                movement.getIdempotencyKey(), balanceChange);
+        try {
+            cardRepository.save(updatedCard);
+        } catch (RuntimeException balanceFailure) {
+            VirtualCard persistedCard = cardRepository.findById(card.getCardId()).orElse(null);
+            if (persistedCard != null
+                    && persistedCard.hasAppliedPaymentOperation(movement.getIdempotencyKey())) {
+                return;
+            }
+            throw new PaymentPersistenceException(
+                    "Payment movement is recorded but the balance update failed; retry with the same idempotency key.",
                     balanceFailure);
         }
     }
 
-    private void rollbackMovement(PaymentMovement movement, RuntimeException originalFailure) {
+    private PaymentMovement markCompleted(PaymentMovement movement) {
+        PaymentMovement completed = movement.withState(
+                movement.getId(), movement.getOccurredAt(), PaymentMovementStatus.COMPLETED);
         try {
-            movementRepository.deleteById(movement.getId());
-        } catch (RuntimeException rollbackFailure) {
-            originalFailure.addSuppressed(rollbackFailure);
+            return movementRepository.save(completed);
+        } catch (RuntimeException saveFailure) {
+            PaymentMovement persisted = movementRepository
+                    .findByIdempotencyKey(movement.getIdempotencyKey()).orElse(null);
+            if (persisted != null && persisted.getStatus() == PaymentMovementStatus.COMPLETED) {
+                return persisted;
+            }
+            throw new PaymentPersistenceException(
+                    "Balance was updated but operation completion could not be recorded; retry with the same idempotency key.",
+                    saveFailure);
+        }
+    }
+
+    private static void validateSameOperation(
+            PaymentMovement movement, PaymentMovementType type, String cardId,
+            BigDecimal amount, String relatedChargeId, String operationReference) {
+        if (movement.getType() != type
+                || !movement.getCardId().equals(cardId)
+                || movement.getAmount().compareTo(amount) != 0
+                || !java.util.Objects.equals(movement.getRelatedChargeId(), relatedChargeId)
+                || !java.util.Objects.equals(
+                        movement.getOperationReference(), operationReference)) {
+            throw new PaymentDeclinedException(
+                    "Idempotency key was already used for a different operation.");
         }
     }
 
@@ -251,6 +383,11 @@ public final class PaymentService implements CardRechargeUseCase, PaymentGateway
         if (value == null || value.isBlank()) {
             throw new PaymentDeclinedException(label + " is required.");
         }
+    }
+
+    private static String requiredText(String value, String label) {
+        requireText(value, label);
+        return value.trim();
     }
 
     private void requireAuthorizedAdministrator(String administratorId) {
