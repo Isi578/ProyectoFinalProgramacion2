@@ -117,6 +117,7 @@ public final class ReservationApplicationService implements ReservationUseCase,
 
         PaymentReceipt payment = paymentGateway.charge(
                 request.getPaymentOperationId().trim(),
+                paymentOperationReference(request, customer.getId(), room, selectedServices, total),
                 request.getCardId().trim(), customer.getId(), total);
 
         Reservation reservation = new Reservation(
@@ -243,6 +244,29 @@ public final class ReservationApplicationService implements ReservationUseCase,
 
     private void publish(ReservationEvent.Type type, Reservation reservation) {
         eventPublisher.publish(new ReservationEvent(type, reservation, LocalDateTime.now()));
+    }
+
+    private static String paymentOperationReference(
+            ReservationRequest request, String customerId, Room room,
+            List<ServiceOption> selectedServices, BigDecimal total) {
+        StringBuilder reference = new StringBuilder();
+        appendReferencePart(reference, customerId);
+        appendReferencePart(reference, room.getNumber());
+        appendReferencePart(reference, request.getCheckInAt().toString());
+        appendReferencePart(reference, request.getCheckOutAt().toString());
+        appendReferencePart(reference, Integer.toString(request.getGuestCount()));
+        appendReferencePart(reference, request.getCardId().trim());
+        appendReferencePart(reference, request.getPromotionCode() == null
+                ? "" : request.getPromotionCode().trim());
+        appendReferencePart(reference, total.stripTrailingZeros().toPlainString());
+        for (ServiceOption service : selectedServices) {
+            appendReferencePart(reference, service.getId());
+        }
+        return reference.toString();
+    }
+
+    private static void appendReferencePart(StringBuilder reference, String value) {
+        reference.append(value.length()).append(':').append(value);
     }
 
     private static void requireText(String value, String label) {

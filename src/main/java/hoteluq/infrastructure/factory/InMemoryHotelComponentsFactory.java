@@ -55,9 +55,6 @@ public final class InMemoryHotelComponentsFactory implements HotelComponentsFact
                 "WELLNESS", "Wellness package", List.of(spa, breakfast));
 
         InMemoryVirtualCardPaymentPort cardPayments = new InMemoryVirtualCardPaymentPort();
-        cardPayments.registerDemoCard("CARD-ANA-001", "GUEST-ANA-001",
-                new BigDecimal("2000000"), true);
-
         VirtualCardRepository cardRepository = new InMemoryVirtualCardRepository();
         cardRepository.save(new VirtualCard("CARD-ANA-001", "GUEST-ANA-001",
                 new BigDecimal("2000000"), true, LocalDateTime.now()));

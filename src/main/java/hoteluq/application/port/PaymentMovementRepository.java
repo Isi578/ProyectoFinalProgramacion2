@@ -7,6 +7,7 @@ import java.util.Optional;
 
 public interface PaymentMovementRepository {
     PaymentMovement save(PaymentMovement movement);
+    void deleteById(String movementId);
     List<PaymentMovement> findByCardId(String cardId);
     List<PaymentMovement> findByRelatedChargeId(String relatedChargeId);
     Optional<PaymentMovement> findByIdempotencyKey(String idempotencyKey);

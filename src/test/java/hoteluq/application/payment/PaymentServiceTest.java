@@ -4,6 +4,7 @@ import com.hoteluq.domain.model.PaymentReceipt;
 import com.hoteluq.domain.model.PaymentMovement;
 import com.hoteluq.domain.model.PaymentMovementType;
 import com.hoteluq.domain.model.VirtualCard;
+import com.hoteluq.application.port.PaymentMovementRepository;
 import com.hoteluq.infrastructure.memory.InMemoryPaymentMovementRepository;
 import com.hoteluq.infrastructure.memory.InMemoryVirtualCardRepository;
 import com.hoteluq.infrastructure.payment.InMemoryVirtualCardPaymentPort;
@@ -18,6 +19,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class PaymentServiceTest {
@@ -54,7 +56,8 @@ class PaymentServiceTest {
         assertEquals(1, movements.findByCardId(CARD_ID).size());
         assertEquals(PaymentMovementType.CHARGE,
                 movements.findByCardId(CARD_ID).get(0).getType());
-        assertEquals(0, new BigDecimal("875.00").compareTo(cardPayments.getDemoBalance(CARD_ID)));
+        assertEquals(0, new BigDecimal("875.00").compareTo(
+                cards.findById(CARD_ID).orElseThrow().getBalance()));
     }
 
     @Test
@@ -123,11 +126,54 @@ class PaymentServiceTest {
     }
 
     @Test
+    void retryingSameReservationOperationReusesItsReceipt() {
+        PaymentReceipt first = paymentService.charge(
+                "reservation-key-retry", "reservation-reference-001",
+                CARD_ID, CUSTOMER_ID, new BigDecimal("125.00"));
+        PaymentReceipt retry = paymentService.charge(
+                "reservation-key-retry", "reservation-reference-001",
+                CARD_ID, CUSTOMER_ID, new BigDecimal("125.00"));
+
+        assertEquals(first.getTransactionId(), retry.getTransactionId());
+        assertEquals(0, new BigDecimal("875.00").compareTo(paymentService.getBalance(CARD_ID)));
+        assertEquals(1, movements.findByCardId(CARD_ID).size());
+    }
+
+    @Test
+    void differentReservationOperationsChargeIndependentlyForSameCardAndAmount() {
+        PaymentReceipt firstReservation = paymentService.charge(
+                "reservation-key-101", "reservation-reference-101",
+                CARD_ID, CUSTOMER_ID, new BigDecimal("125.00"));
+        PaymentReceipt secondReservation = paymentService.charge(
+                "reservation-key-102", "reservation-reference-102",
+                CARD_ID, CUSTOMER_ID, new BigDecimal("125.00"));
+
+        assertNotEquals(firstReservation.getTransactionId(), secondReservation.getTransactionId());
+        assertEquals(0, new BigDecimal("750.00").compareTo(paymentService.getBalance(CARD_ID)));
+        assertEquals(2, movements.findByCardId(CARD_ID).size());
+    }
+
+    @Test
+    void rejectsReuseOfReservationKeyForDifferentReservationReference() {
+        paymentService.charge(
+                "reservation-key-reused", "reservation-reference-original",
+                CARD_ID, CUSTOMER_ID, new BigDecimal("125.00"));
+
+        assertThrows(PaymentDeclinedException.class,
+                () -> paymentService.charge(
+                        "reservation-key-reused", "reservation-reference-different",
+                        CARD_ID, CUSTOMER_ID, new BigDecimal("125.00")));
+        assertEquals(0, new BigDecimal("875.00").compareTo(paymentService.getBalance(CARD_ID)));
+        assertEquals(1, movements.findByCardId(CARD_ID).size());
+    }
+
+    @Test
     void rechargesSuccessfullyAndRecordsRechargeMovement() {
         paymentService.recharge(ADMIN_ID, CARD_ID, new BigDecimal("250.00"));
 
         assertEquals(0, new BigDecimal("1250.00").compareTo(paymentService.getBalance(CARD_ID)));
-        assertEquals(0, new BigDecimal("1250.00").compareTo(cardPayments.getDemoBalance(CARD_ID)));
+        assertEquals(0, new BigDecimal("1250.00").compareTo(
+                cards.findById(CARD_ID).orElseThrow().getBalance()));
         List<PaymentMovement> cardMovements = movements.findByCardId(CARD_ID);
         assertEquals(1, cardMovements.size());
         assertEquals(PaymentMovementType.RECHARGE, cardMovements.get(0).getType());
@@ -214,9 +260,63 @@ class PaymentServiceTest {
         assertEquals(1, movements.findAll().size());
     }
 
+    @Test
+    void doesNotChangeBalanceWhenMovementPersistenceFailsAfterWriting() {
+        InMemoryPaymentMovementRepository persistedMovements =
+                new InMemoryPaymentMovementRepository();
+        PaymentMovementRepository failingMovements = new PaymentMovementRepository() {
+            private boolean failOnSave = true;
+
+            @Override
+            public PaymentMovement save(PaymentMovement movement) {
+                PaymentMovement saved = persistedMovements.save(movement);
+                if (failOnSave) {
+                    failOnSave = false;
+                    throw new IllegalStateException("Simulated failure after movement write.");
+                }
+                return saved;
+            }
+
+            @Override
+            public void deleteById(String movementId) {
+                persistedMovements.deleteById(movementId);
+            }
+
+            @Override
+            public List<PaymentMovement> findByCardId(String cardId) {
+                return persistedMovements.findByCardId(cardId);
+            }
+
+            @Override
+            public List<PaymentMovement> findByRelatedChargeId(String relatedChargeId) {
+                return persistedMovements.findByRelatedChargeId(relatedChargeId);
+            }
+
+            @Override
+            public java.util.Optional<PaymentMovement> findByIdempotencyKey(String key) {
+                return persistedMovements.findByIdempotencyKey(key);
+            }
+
+            @Override
+            public List<PaymentMovement> findAll() {
+                return persistedMovements.findAll();
+            }
+        };
+        PaymentService service = new PaymentService(
+                new VirtualCardPaymentAdapter(cardPayments), cards, failingMovements);
+
+        assertThrows(PaymentPersistenceException.class,
+                () -> service.charge(
+                        "charge-persistence-failure", CARD_ID, CUSTOMER_ID,
+                        new BigDecimal("125.00")));
+
+        assertEquals(0, new BigDecimal("1000.00").compareTo(
+                cards.findById(CARD_ID).orElseThrow().getBalance()));
+        assertEquals(0, persistedMovements.findAll().size());
+    }
+
     private void addCard(String cardId, BigDecimal balance, boolean active) {
         cards.save(new VirtualCard(
                 cardId, CUSTOMER_ID, balance, active, LocalDateTime.now()));
-        cardPayments.registerDemoCard(cardId, CUSTOMER_ID, balance, active);
     }
 }

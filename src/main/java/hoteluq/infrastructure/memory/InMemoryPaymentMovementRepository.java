@@ -14,12 +14,30 @@ public final class InMemoryPaymentMovementRepository implements PaymentMovementR
             new ConcurrentHashMap<>();
 
     @Override
-    public PaymentMovement save(PaymentMovement movement) {
-        movements.put(movement.getId(), movement);
+    public synchronized PaymentMovement save(PaymentMovement movement) {
+        if (movement == null) throw new IllegalArgumentException("Payment movement is required.");
         if (movement.getIdempotencyKey() != null) {
-            movementsByIdempotencyKey.putIfAbsent(movement.getIdempotencyKey(), movement);
+            PaymentMovement existing = movementsByIdempotencyKey.get(movement.getIdempotencyKey());
+            if (existing != null && !existing.getId().equals(movement.getId())) {
+                throw new IllegalArgumentException("Idempotency key is already recorded.");
+            }
+        }
+        PaymentMovement existingMovement = movements.putIfAbsent(movement.getId(), movement);
+        if (existingMovement != null && existingMovement != movement) {
+            throw new IllegalArgumentException("Payment movement id is already recorded.");
+        }
+        if (movement.getIdempotencyKey() != null) {
+            movementsByIdempotencyKey.put(movement.getIdempotencyKey(), movement);
         }
         return movement;
+    }
+
+    @Override
+    public synchronized void deleteById(String movementId) {
+        PaymentMovement removed = movements.remove(movementId);
+        if (removed != null && removed.getIdempotencyKey() != null) {
+            movementsByIdempotencyKey.remove(removed.getIdempotencyKey(), removed);
+        }
     }
 
     @Override
