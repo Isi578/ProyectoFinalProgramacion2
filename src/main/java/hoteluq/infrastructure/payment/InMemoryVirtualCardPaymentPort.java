@@ -21,10 +21,11 @@ import java.util.UUID;
 public final class InMemoryVirtualCardPaymentPort implements VirtualCardPaymentPort {
     private final Map<String, DemoCardAccount> cards = new HashMap<>();
     private final Map<String, PaymentReceipt> charges = new HashMap<>();
+    private final Map<String, IdempotentCharge> idempotentCharges = new HashMap<>();
     private final Set<String> refundedCharges = new HashSet<>();
     private final List<PaymentMovement> movements = new ArrayList<>();
 
-    /** Seed-only setup; card administration and recharge are intentionally outside this adapter. */
+    /** Seed-only setup; card administration is intentionally outside this adapter. */
     public synchronized void registerDemoCard(String cardId, String customerId,
                                               BigDecimal openingBalance, boolean active) {
         requireText(cardId, "Card id");
@@ -37,6 +38,30 @@ public final class InMemoryVirtualCardPaymentPort implements VirtualCardPaymentP
 
     @Override
     public synchronized PaymentReceipt charge(String cardId, String customerId, BigDecimal amount) {
+        return performCharge(cardId, customerId, amount);
+    }
+
+    @Override
+    public synchronized PaymentReceipt charge(String idempotencyKey, String cardId,
+                                              String customerId, BigDecimal amount) {
+        requireText(idempotencyKey, "Idempotency key");
+        validatePositiveAmount(amount);
+        ChargeRequest request = new ChargeRequest(cardId, customerId, amount);
+        IdempotentCharge previousCharge = idempotentCharges.get(idempotencyKey.trim());
+        if (previousCharge != null) {
+            if (!previousCharge.request.matches(request)) {
+                throw new PaymentDeclinedException(
+                        "Idempotency key was already used for a different charge.");
+            }
+            return previousCharge.receipt;
+        }
+
+        PaymentReceipt receipt = performCharge(cardId, customerId, amount);
+        idempotentCharges.put(idempotencyKey.trim(), new IdempotentCharge(request, receipt));
+        return receipt;
+    }
+
+    private PaymentReceipt performCharge(String cardId, String customerId, BigDecimal amount) {
         DemoCardAccount account = findCard(cardId);
         validatePositiveAmount(amount);
         if (customerId == null || !account.customerId.equals(customerId.trim())) {
@@ -55,6 +80,17 @@ public final class InMemoryVirtualCardPaymentPort implements VirtualCardPaymentP
         movements.add(new PaymentMovement(chargeId, cardId.trim(), PaymentMovementType.CHARGE,
                 amount, null, paidAt));
         return receipt;
+    }
+
+    @Override
+    public synchronized void recharge(String cardId, BigDecimal amount) {
+        DemoCardAccount account = findCard(cardId);
+        validatePositiveAmount(amount);
+        if (!account.active) throw new InactiveCardException("Virtual card is inactive.");
+
+        account.balance = account.balance.add(amount);
+        movements.add(new PaymentMovement(UUID.randomUUID().toString(), cardId.trim(),
+                PaymentMovementType.RECHARGE, amount, null, LocalDateTime.now()));
     }
 
     @Override
@@ -122,6 +158,34 @@ public final class InMemoryVirtualCardPaymentPort implements VirtualCardPaymentP
             this.customerId = customerId;
             this.balance = balance;
             this.active = active;
+        }
+    }
+
+    private static final class ChargeRequest {
+        private final String cardId;
+        private final String customerId;
+        private final BigDecimal amount;
+
+        private ChargeRequest(String cardId, String customerId, BigDecimal amount) {
+            this.cardId = cardId == null ? null : cardId.trim();
+            this.customerId = customerId == null ? null : customerId.trim();
+            this.amount = amount;
+        }
+
+        private boolean matches(ChargeRequest other) {
+            return java.util.Objects.equals(cardId, other.cardId)
+                    && java.util.Objects.equals(customerId, other.customerId)
+                    && amount.compareTo(other.amount) == 0;
+        }
+    }
+
+    private static final class IdempotentCharge {
+        private final ChargeRequest request;
+        private final PaymentReceipt receipt;
+
+        private IdempotentCharge(ChargeRequest request, PaymentReceipt receipt) {
+            this.request = request;
+            this.receipt = receipt;
         }
     }
 }

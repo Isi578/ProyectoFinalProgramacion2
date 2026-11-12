@@ -10,15 +10,23 @@ public final class PaymentMovement {
     private final BigDecimal amount;
     private final String relatedChargeId;
     private final LocalDateTime occurredAt;
+    private final String idempotencyKey;
 
     public PaymentMovement(String id, String cardId, PaymentMovementType type,
                            BigDecimal amount, String relatedChargeId, LocalDateTime occurredAt) {
+        this(id, cardId, type, amount, relatedChargeId, occurredAt, null);
+    }
+
+    public PaymentMovement(String id, String cardId, PaymentMovementType type,
+                           BigDecimal amount, String relatedChargeId, LocalDateTime occurredAt,
+                           String idempotencyKey) {
         this.id = id;
         this.cardId = cardId;
         this.type = type;
         this.amount = amount;
         this.relatedChargeId = relatedChargeId;
         this.occurredAt = occurredAt;
+        this.idempotencyKey = idempotencyKey;
     }
 
     public String getId() { return id; }
@@ -27,4 +35,5 @@ public final class PaymentMovement {
     public BigDecimal getAmount() { return amount; }
     public String getRelatedChargeId() { return relatedChargeId; }
     public LocalDateTime getOccurredAt() { return occurredAt; }
+    public String getIdempotencyKey() { return idempotencyKey; }
 }
