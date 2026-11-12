@@ -9,4 +9,5 @@ public interface PaymentGateway {
     PaymentReceipt charge(String idempotencyKey, String cardId, String customerId, BigDecimal amount);
     void recharge(String administratorId, String cardId, BigDecimal amount);
     void refund(PaymentReceipt originalPayment, BigDecimal refundAmount);
+    void refund(String idempotencyKey, PaymentReceipt originalPayment, BigDecimal refundAmount);
 }

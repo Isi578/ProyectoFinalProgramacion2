@@ -3,18 +3,17 @@ package com.hoteluq.infrastructure.payment;
 import com.hoteluq.application.payment.InactiveCardException;
 import com.hoteluq.application.payment.InsufficientBalanceException;
 import com.hoteluq.application.payment.PaymentDeclinedException;
-import com.hoteluq.application.payment.RefundAlreadyProcessedException;
 import com.hoteluq.application.port.VirtualCardPaymentPort;
+import com.hoteluq.domain.model.PaymentMovement;
+import com.hoteluq.domain.model.PaymentMovementType;
 import com.hoteluq.domain.model.PaymentReceipt;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 /** Demo payment adapter. The production card module supplies this port in the full system. */
@@ -22,7 +21,8 @@ public final class InMemoryVirtualCardPaymentPort implements VirtualCardPaymentP
     private final Map<String, DemoCardAccount> cards = new HashMap<>();
     private final Map<String, PaymentReceipt> charges = new HashMap<>();
     private final Map<String, IdempotentCharge> idempotentCharges = new HashMap<>();
-    private final Set<String> refundedCharges = new HashSet<>();
+    private final Map<String, BigDecimal> refundedAmounts = new HashMap<>();
+    private final Map<String, IdempotentRefund> idempotentRefunds = new HashMap<>();
     private final List<PaymentMovement> movements = new ArrayList<>();
 
     /** Seed-only setup; card administration is intentionally outside this adapter. */
@@ -98,18 +98,39 @@ public final class InMemoryVirtualCardPaymentPort implements VirtualCardPaymentP
         if (originalPayment == null) {
             throw new PaymentDeclinedException("Original payment is required for a refund.");
         }
+        String key = "legacy-refund:" + originalPayment.getTransactionId()
+                + ":" + (refundAmount == null ? "null" : refundAmount.stripTrailingZeros().toPlainString());
+        refund(key, originalPayment, refundAmount);
+    }
+
+    @Override
+    public synchronized void refund(String idempotencyKey, PaymentReceipt originalPayment,
+                                    BigDecimal refundAmount) {
+        requireText(idempotencyKey, "Idempotency key");
+        if (originalPayment == null) {
+            throw new PaymentDeclinedException("Original payment is required for a refund.");
+        }
+        validatePositiveAmount(originalPayment.getAmount());
+        validatePositiveAmount(refundAmount);
         String chargeId = originalPayment.getTransactionId();
         PaymentReceipt recordedCharge = charges.get(chargeId);
         if (recordedCharge == null || !recordedCharge.getCardId().equals(originalPayment.getCardId())
                 || recordedCharge.getAmount().compareTo(originalPayment.getAmount()) != 0) {
             throw new PaymentDeclinedException("Original card charge was not found.");
         }
-        if (refundedCharges.contains(chargeId)) {
-            throw new RefundAlreadyProcessedException("This payment has already been refunded.");
+        IdempotentRefund previousRefund = idempotentRefunds.get(idempotencyKey.trim());
+        if (previousRefund != null) {
+            if (!previousRefund.matches(chargeId, refundAmount)) {
+                throw new PaymentDeclinedException(
+                        "Idempotency key was already used for a different refund.");
+            }
+            return;
         }
-        validatePositiveAmount(refundAmount);
-        if (refundAmount.compareTo(recordedCharge.getAmount()) > 0) {
-            throw new PaymentDeclinedException("Refund cannot exceed the original payment.");
+
+        BigDecimal refundedSoFar = refundedAmounts.getOrDefault(chargeId, BigDecimal.ZERO);
+        BigDecimal remainingAmount = recordedCharge.getAmount().subtract(refundedSoFar);
+        if (refundAmount.compareTo(remainingAmount) > 0) {
+            throw new PaymentDeclinedException("Refund exceeds the remaining refundable amount.");
         }
 
         DemoCardAccount account = findCard(recordedCharge.getCardId());
@@ -117,7 +138,9 @@ public final class InMemoryVirtualCardPaymentPort implements VirtualCardPaymentP
         String refundId = UUID.randomUUID().toString();
         movements.add(new PaymentMovement(refundId, recordedCharge.getCardId(),
                 PaymentMovementType.REFUND, refundAmount, chargeId, LocalDateTime.now()));
-        refundedCharges.add(chargeId);
+        refundedAmounts.put(chargeId, refundedSoFar.add(refundAmount));
+        idempotentRefunds.put(idempotencyKey.trim(),
+                new IdempotentRefund(chargeId, refundAmount));
     }
 
     public synchronized BigDecimal getDemoBalance(String cardId) {
@@ -186,6 +209,20 @@ public final class InMemoryVirtualCardPaymentPort implements VirtualCardPaymentP
         private IdempotentCharge(ChargeRequest request, PaymentReceipt receipt) {
             this.request = request;
             this.receipt = receipt;
+        }
+    }
+
+    private static final class IdempotentRefund {
+        private final String chargeId;
+        private final BigDecimal amount;
+
+        private IdempotentRefund(String chargeId, BigDecimal amount) {
+            this.chargeId = chargeId;
+            this.amount = amount;
+        }
+
+        private boolean matches(String requestedChargeId, BigDecimal requestedAmount) {
+            return chargeId.equals(requestedChargeId) && amount.compareTo(requestedAmount) == 0;
         }
     }
 }

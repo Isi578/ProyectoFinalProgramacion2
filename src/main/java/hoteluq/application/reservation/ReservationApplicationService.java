@@ -116,6 +116,7 @@ public final class ReservationApplicationService implements ReservationUseCase,
         }
 
         PaymentReceipt payment = paymentGateway.charge(
+                request.getPaymentOperationId().trim(),
                 request.getCardId().trim(), customer.getId(), total);
 
         Reservation reservation = new Reservation(
@@ -127,7 +128,9 @@ public final class ReservationApplicationService implements ReservationUseCase,
             reservationRepository.save(reservation);
         } catch (RuntimeException saveFailure) {
             try {
-                paymentGateway.refund(payment, payment.getAmount());
+                paymentGateway.refund(
+                        "reservation-compensation:" + request.getPaymentOperationId().trim(),
+                        payment, payment.getAmount());
             } catch (RuntimeException refundFailure) {
                 saveFailure.addSuppressed(refundFailure);
             }
@@ -179,7 +182,9 @@ public final class ReservationApplicationService implements ReservationUseCase,
                 cancelledAt, reservation.getCheckInAt(), reservation.getTotalPaid());
 
         if (decision.getRefundAmount().signum() > 0) {
-            paymentGateway.refund(reservation.getPaymentReceipt(), decision.getRefundAmount());
+            paymentGateway.refund(
+                    "reservation-cancellation:" + reservation.getId(),
+                    reservation.getPaymentReceipt(), decision.getRefundAmount());
         }
 
         reservation.cancel();
@@ -230,6 +235,7 @@ public final class ReservationApplicationService implements ReservationUseCase,
         requireText(request.getCustomerId(), "Customer id");
         requireText(request.getRoomNumber(), "Room number");
         requireText(request.getCardId(), "Card id");
+        requireText(request.getPaymentOperationId(), "Payment operation id");
         if (request.getGuestCount() < 1) {
             throw new InvalidReservationException("At least one guest is required.");
         }

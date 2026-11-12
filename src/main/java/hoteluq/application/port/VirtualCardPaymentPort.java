@@ -10,4 +10,5 @@ public interface VirtualCardPaymentPort {
     PaymentReceipt charge(String idempotencyKey, String cardId, String customerId, BigDecimal amount);
     void recharge(String cardId, BigDecimal amount);
     void refund(PaymentReceipt originalPayment, BigDecimal refundAmount);
+    void refund(String idempotencyKey, PaymentReceipt originalPayment, BigDecimal refundAmount);
 }

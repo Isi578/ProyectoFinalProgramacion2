@@ -12,6 +12,7 @@ public final class ReservationRequest {
     private final List<String> serviceIds;
     private final String cardId;
     private final String promotionCode;
+    private final String paymentOperationId;
 
     private ReservationRequest(Builder builder) {
         customerId = builder.customerId;
@@ -22,6 +23,7 @@ public final class ReservationRequest {
         serviceIds = List.copyOf(builder.serviceIds);
         cardId = builder.cardId;
         promotionCode = builder.promotionCode;
+        paymentOperationId = builder.paymentOperationId;
     }
 
     public static Builder builder() { return new Builder(); }
@@ -33,6 +35,7 @@ public final class ReservationRequest {
     public List<String> getServiceIds() { return serviceIds; }
     public String getCardId() { return cardId; }
     public String getPromotionCode() { return promotionCode; }
+    public String getPaymentOperationId() { return paymentOperationId; }
 
     public static final class Builder {
         private String customerId;
@@ -43,6 +46,7 @@ public final class ReservationRequest {
         private List<String> serviceIds = List.of();
         private String cardId;
         private String promotionCode;
+        private String paymentOperationId;
 
         public Builder customerId(String value) { customerId = value; return this; }
         public Builder roomNumber(String value) { roomNumber = value; return this; }
@@ -52,6 +56,7 @@ public final class ReservationRequest {
         public Builder serviceIds(List<String> value) { serviceIds = value == null ? List.of() : List.copyOf(value); return this; }
         public Builder cardId(String value) { cardId = value; return this; }
         public Builder promotionCode(String value) { promotionCode = value; return this; }
+        public Builder paymentOperationId(String value) { paymentOperationId = value; return this; }
 
         public ReservationRequest build() {
             return new ReservationRequest(this);

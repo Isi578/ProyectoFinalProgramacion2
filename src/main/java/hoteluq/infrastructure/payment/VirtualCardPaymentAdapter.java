@@ -33,4 +33,10 @@ public final class VirtualCardPaymentAdapter implements PaymentGateway {
     public void refund(PaymentReceipt originalPayment, BigDecimal refundAmount) {
         cardPayments.refund(originalPayment, refundAmount);
     }
+
+    @Override
+    public void refund(String idempotencyKey, PaymentReceipt originalPayment,
+                       BigDecimal refundAmount) {
+        cardPayments.refund(idempotencyKey, originalPayment, refundAmount);
+    }
 }

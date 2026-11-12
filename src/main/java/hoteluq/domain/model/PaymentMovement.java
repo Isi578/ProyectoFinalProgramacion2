@@ -1,4 +1,4 @@
-package com.hoteluq.infrastructure.payment;
+package com.hoteluq.domain.model;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;

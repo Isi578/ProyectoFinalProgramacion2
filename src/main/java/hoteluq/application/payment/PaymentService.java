@@ -5,9 +5,9 @@ import com.hoteluq.application.port.PaymentGateway;
 import com.hoteluq.application.port.PaymentMovementRepository;
 import com.hoteluq.application.port.VirtualCardRepository;
 import com.hoteluq.domain.model.PaymentReceipt;
+import com.hoteluq.domain.model.PaymentMovement;
+import com.hoteluq.domain.model.PaymentMovementType;
 import com.hoteluq.domain.model.VirtualCard;
-import com.hoteluq.infrastructure.payment.PaymentMovement;
-import com.hoteluq.infrastructure.payment.PaymentMovementType;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -64,9 +64,8 @@ public final class PaymentService implements CardRechargeUseCase, PaymentGateway
             throw new PaymentDeclinedException("Virtual card does not belong to this customer.");
         }
 
-        PaymentMovement priorCharge = movementRepository.findAll().stream()
-                .filter(movement -> idempotencyKey.trim().equals(movement.getIdempotencyKey()))
-                .findFirst()
+        PaymentMovement priorCharge = movementRepository
+                .findByIdempotencyKey(idempotencyKey.trim())
                 .orElse(null);
         if (priorCharge != null) {
             if (priorCharge.getType() != PaymentMovementType.CHARGE
@@ -125,32 +124,65 @@ public final class PaymentService implements CardRechargeUseCase, PaymentGateway
 
     @Override
     public synchronized void refund(PaymentReceipt originalPayment, BigDecimal refundAmount) {
+        requireOriginalPayment(originalPayment);
+        validatePositiveAmount(refundAmount);
+        String idempotencyKey = "legacy-refund:" + originalPayment.getTransactionId()
+                + ":" + refundAmount.stripTrailingZeros().toPlainString();
+        refund(idempotencyKey, originalPayment, refundAmount);
+    }
+
+    @Override
+    public synchronized void refund(
+            String idempotencyKey, PaymentReceipt originalPayment, BigDecimal refundAmount) {
+        requireText(idempotencyKey, "Idempotency key");
+        requireOriginalPayment(originalPayment);
+        validatePositiveAmount(refundAmount);
+        if (refundAmount.compareTo(originalPayment.getAmount()) > 0) {
+            throw new PaymentDeclinedException("Refund cannot exceed the original payment.");
+        }
+
+        PaymentMovement priorRefund = movementRepository
+                .findByIdempotencyKey(idempotencyKey.trim())
+                .orElse(null);
+        if (priorRefund != null) {
+            if (priorRefund.getType() != PaymentMovementType.REFUND
+                    || !priorRefund.getCardId().equals(originalPayment.getCardId())
+                    || !originalPayment.getTransactionId().equals(priorRefund.getRelatedChargeId())
+                    || priorRefund.getAmount().compareTo(refundAmount) != 0) {
+                throw new PaymentDeclinedException(
+                        "Idempotency key was already used for a different transaction.");
+            }
+            return;
+        }
+
+        VirtualCard card = findCard(originalPayment.getCardId());
+        validateCardBalance(card);
+        BigDecimal refundedSoFar = movementRepository
+                .findByRelatedChargeId(originalPayment.getTransactionId()).stream()
+                .filter(movement -> movement.getType() == PaymentMovementType.REFUND)
+                .map(PaymentMovement::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal remainingAmount = originalPayment.getAmount().subtract(refundedSoFar);
+        if (refundAmount.compareTo(remainingAmount) > 0) {
+            throw new PaymentDeclinedException("Refund exceeds the remaining refundable amount.");
+        }
+
+        paymentGateway.refund(idempotencyKey.trim(), originalPayment, refundAmount);
+        card.setBalance(card.getBalance().add(refundAmount));
+        cardRepository.save(card);
+        movementRepository.save(new PaymentMovement(
+                UUID.randomUUID().toString(), card.getCardId(), PaymentMovementType.REFUND,
+                refundAmount, originalPayment.getTransactionId(), LocalDateTime.now(),
+                idempotencyKey.trim()));
+    }
+
+    private static void requireOriginalPayment(PaymentReceipt originalPayment) {
         if (originalPayment == null) {
             throw new PaymentDeclinedException("Original payment is required for a refund.");
         }
         requireText(originalPayment.getTransactionId(), "Transaction id");
         requireText(originalPayment.getCardId(), "Card id");
         validatePositiveAmount(originalPayment.getAmount());
-        validatePositiveAmount(refundAmount);
-        if (refundAmount.compareTo(originalPayment.getAmount()) > 0) {
-            throw new PaymentDeclinedException("Refund cannot exceed the original payment.");
-        }
-
-        VirtualCard card = findCard(originalPayment.getCardId());
-        validateCardBalance(card);
-        boolean alreadyRefunded = movementRepository.findByCardId(card.getCardId()).stream()
-                .anyMatch(movement -> movement.getType() == PaymentMovementType.REFUND
-                        && originalPayment.getTransactionId().equals(movement.getRelatedChargeId()));
-        if (alreadyRefunded) {
-            throw new RefundAlreadyProcessedException("This payment has already been refunded.");
-        }
-
-        paymentGateway.refund(originalPayment, refundAmount);
-        card.setBalance(card.getBalance().add(refundAmount));
-        cardRepository.save(card);
-        movementRepository.save(new PaymentMovement(
-                UUID.randomUUID().toString(), card.getCardId(), PaymentMovementType.REFUND,
-                refundAmount, originalPayment.getTransactionId(), LocalDateTime.now()));
     }
 
     private VirtualCard findCard(String cardId) {
