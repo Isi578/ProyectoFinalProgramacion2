@@ -25,7 +25,7 @@ public final class VirtualCardPaymentAdapter implements PaymentGateway {
     }
 
     @Override
-    public void recharge(String cardId, BigDecimal amount) {
+    public void recharge(String administratorId, String cardId, BigDecimal amount) {
         cardPayments.recharge(cardId, amount);
     }
 

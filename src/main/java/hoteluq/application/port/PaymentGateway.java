@@ -7,6 +7,6 @@ import java.math.BigDecimal;
 public interface PaymentGateway {
     PaymentReceipt charge(String cardId, String customerId, BigDecimal amount);
     PaymentReceipt charge(String idempotencyKey, String cardId, String customerId, BigDecimal amount);
-    void recharge(String cardId, BigDecimal amount);
+    void recharge(String administratorId, String cardId, BigDecimal amount);
     void refund(PaymentReceipt originalPayment, BigDecimal refundAmount);
 }

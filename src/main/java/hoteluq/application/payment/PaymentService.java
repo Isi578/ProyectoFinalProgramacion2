@@ -1,5 +1,6 @@
 package com.hoteluq.application.payment;
 
+import com.hoteluq.application.contract.CardRechargeUseCase;
 import com.hoteluq.application.port.PaymentGateway;
 import com.hoteluq.application.port.PaymentMovementRepository;
 import com.hoteluq.application.port.VirtualCardRepository;
@@ -10,22 +11,48 @@ import com.hoteluq.infrastructure.payment.PaymentMovementType;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
-public final class PaymentService {
+public final class PaymentService implements CardRechargeUseCase, PaymentGateway {
     private final PaymentGateway paymentGateway;
     private final VirtualCardRepository cardRepository;
     private final PaymentMovementRepository movementRepository;
+    private final Set<String> authorizedAdministratorIds;
 
     public PaymentService(PaymentGateway paymentGateway,
                           VirtualCardRepository cardRepository,
                           PaymentMovementRepository movementRepository) {
+        this(paymentGateway, cardRepository, movementRepository, Set.of());
+    }
+
+    public PaymentService(PaymentGateway paymentGateway,
+                          VirtualCardRepository cardRepository,
+                          PaymentMovementRepository movementRepository,
+                          Set<String> authorizedAdministratorIds) {
         this.paymentGateway = paymentGateway;
         this.cardRepository = cardRepository;
         this.movementRepository = movementRepository;
+        if (authorizedAdministratorIds == null) {
+            throw new IllegalArgumentException("Authorized administrators are required.");
+        }
+        this.authorizedAdministratorIds = new HashSet<>();
+        for (String administratorId : authorizedAdministratorIds) {
+            if (administratorId == null || administratorId.isBlank()) {
+                throw new IllegalArgumentException("Administrator id is required.");
+            }
+            this.authorizedAdministratorIds.add(administratorId.trim());
+        }
     }
 
+    @Override
+    public PaymentReceipt charge(String cardId, String customerId, BigDecimal amount) {
+        return charge(UUID.randomUUID().toString(), cardId, customerId, amount);
+    }
+
+    @Override
     public synchronized PaymentReceipt charge(
             String idempotencyKey, String cardId, String customerId, BigDecimal amount) {
         requireText(idempotencyKey, "Idempotency key");
@@ -74,7 +101,9 @@ public final class PaymentService {
         return findCard(cardId).getBalance();
     }
 
-    public synchronized void recharge(String cardId, BigDecimal amount) {
+    @Override
+    public synchronized void recharge(String administratorId, String cardId, BigDecimal amount) {
+        requireAuthorizedAdministrator(administratorId);
         validatePositiveAmount(amount);
         VirtualCard card = findCard(cardId);
         if (!card.isActive()) {
@@ -82,7 +111,7 @@ public final class PaymentService {
         }
         validateCardBalance(card);
 
-        paymentGateway.recharge(card.getCardId(), amount);
+        paymentGateway.recharge(administratorId.trim(), card.getCardId(), amount);
         card.setBalance(card.getBalance().add(amount));
         cardRepository.save(card);
         movementRepository.save(new PaymentMovement(
@@ -94,6 +123,7 @@ public final class PaymentService {
         return movementRepository.findByCardId(cardId);
     }
 
+    @Override
     public synchronized void refund(PaymentReceipt originalPayment, BigDecimal refundAmount) {
         if (originalPayment == null) {
             throw new PaymentDeclinedException("Original payment is required for a refund.");
@@ -144,6 +174,13 @@ public final class PaymentService {
     private static void requireText(String value, String label) {
         if (value == null || value.isBlank()) {
             throw new PaymentDeclinedException(label + " is required.");
+        }
+    }
+
+    private void requireAuthorizedAdministrator(String administratorId) {
+        requireText(administratorId, "Administrator id");
+        if (!authorizedAdministratorIds.contains(administratorId.trim())) {
+            throw new PaymentDeclinedException("Administrator is not authorized to recharge cards.");
         }
     }
 }
