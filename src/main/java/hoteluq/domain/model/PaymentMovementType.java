@@ -1,4 +1,4 @@
-package com.hoteluq.infrastructure.payment;
+package com.hoteluq.domain.model;
 
 public enum PaymentMovementType {
     CHARGE,

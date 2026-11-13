@@ -9,5 +9,10 @@ public interface VirtualCardPaymentPort {
     PaymentReceipt charge(String cardId, String customerId, BigDecimal amount);
     PaymentReceipt charge(String idempotencyKey, String cardId, String customerId, BigDecimal amount);
     void recharge(String cardId, BigDecimal amount);
+    /** Implementations backed by a stateful provider should deduplicate retries with this key. */
+    default void recharge(String idempotencyKey, String cardId, BigDecimal amount) {
+        recharge(cardId, amount);
+    }
     void refund(PaymentReceipt originalPayment, BigDecimal refundAmount);
+    void refund(String idempotencyKey, PaymentReceipt originalPayment, BigDecimal refundAmount);
 }

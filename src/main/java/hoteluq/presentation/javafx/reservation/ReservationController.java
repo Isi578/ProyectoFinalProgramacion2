@@ -11,10 +11,13 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
 
 public final class ReservationController {
     private final ReservationView view;
     private final ReservationUseCase reservationUseCase;
+    private ReservationRequest pendingReservationRequest;
 
     public ReservationController(ReservationView view, ReservationUseCase reservationUseCase) {
         this.view = view;
@@ -50,18 +53,14 @@ public final class ReservationController {
 
     private void createReservation() {
         try {
-            ReservationRequest request = ReservationRequest.builder()
-                    .customerId(view.getCustomerId().getText())
-                    .roomNumber(view.getRoomNumber().getText())
-                    .checkInAt(checkInAt())
-                    .checkOutAt(checkOutAt())
-                    .guestCount(view.getGuestCount().getValue())
-                    .serviceIds(parseServiceIds(view.getServiceIds().getText()))
-                    .cardId(view.getCardId().getText())
-                    .promotionCode(view.getPromotionCode().getText())
-                    .build();
+            ReservationRequest request = buildReservationRequest(null);
+            if (pendingReservationRequest == null
+                    || !hasSameDetails(request, pendingReservationRequest)) {
+                pendingReservationRequest = buildReservationRequest(UUID.randomUUID().toString());
+            }
 
-            Reservation reservation = reservationUseCase.createReservation(request);
+            Reservation reservation = reservationUseCase.createReservation(pendingReservationRequest);
+            pendingReservationRequest = null;
             view.getReservationId().setText(reservation.getId());
             show("Reservation created and paid successfully."
                     + System.lineSeparator() + reservation
@@ -69,6 +68,33 @@ public final class ReservationController {
         } catch (RuntimeException exception) {
             showError(exception);
         }
+    }
+
+    private ReservationRequest buildReservationRequest(String paymentOperationId) {
+        ReservationRequest.Builder builder = ReservationRequest.builder()
+                .customerId(view.getCustomerId().getText())
+                .roomNumber(view.getRoomNumber().getText())
+                .checkInAt(checkInAt())
+                .checkOutAt(checkOutAt())
+                .guestCount(view.getGuestCount().getValue())
+                .serviceIds(parseServiceIds(view.getServiceIds().getText()))
+                .cardId(view.getCardId().getText())
+                .promotionCode(view.getPromotionCode().getText());
+        if (paymentOperationId != null) {
+            builder.paymentOperationId(paymentOperationId);
+        }
+        return builder.build();
+    }
+
+    private static boolean hasSameDetails(ReservationRequest first, ReservationRequest second) {
+        return Objects.equals(first.getCustomerId(), second.getCustomerId())
+                && Objects.equals(first.getRoomNumber(), second.getRoomNumber())
+                && Objects.equals(first.getCheckInAt(), second.getCheckInAt())
+                && Objects.equals(first.getCheckOutAt(), second.getCheckOutAt())
+                && first.getGuestCount() == second.getGuestCount()
+                && Objects.equals(first.getServiceIds(), second.getServiceIds())
+                && Objects.equals(first.getCardId(), second.getCardId())
+                && Objects.equals(first.getPromotionCode(), second.getPromotionCode());
     }
 
     private void cancelReservation() {
