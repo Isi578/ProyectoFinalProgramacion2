@@ -50,13 +50,5 @@ public final class InMemoryLoyaltyPromotionFactory {
                 .validBetween(LocalDateTime.of(2026, 11, 1, 0, 0), LocalDateTime.of(2027, 3, 31, 23, 59))
                 .minNights(2)
                 .build());
-        promotions.registerPromotion(Promotion.builder("SUITE15", new PercentageDiscount(new BigDecimal("0.15")))
-                .name("15% off suites")
-                .forRoomTypes("SUITE")
-                .build());
-        promotions.registerPromotion(Promotion.builder("FRECUENTE5", new PercentageDiscount(new BigDecimal("0.05")))
-                .name("5% off for returning guests")
-                .frequentCustomer(hotel.getReservationRepository(), 1)
-                .build());
     }
 }

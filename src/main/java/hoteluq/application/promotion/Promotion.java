@@ -35,6 +35,7 @@ public final class Promotion {
         return discount.discountFor(context.subtotal());
     }
 
+    public void activate() { active = true; }
     public void deactivate() { active = false; }
     public boolean isActive() { return active; }
     public String getCode() { return code; }
@@ -61,20 +62,11 @@ public final class Promotion {
             return this;
         }
 
-        public Builder forRoomTypes(String... roomTypeIds) {
-            conditions.add(new RoomTypeCondition(Set.of(roomTypeIds)));
-            return this;
-        }
-
         public Builder minNights(int nights) {
             conditions.add(new MinNightsCondition(nights));
             return this;
         }
 
-        public Builder frequentCustomer(ReservationRepository reservations, int minReservations) {
-            conditions.add(new FrequentCustomerCondition(reservations, minReservations));
-            return this;
-        }
 
         public Promotion build() { return new Promotion(this); }
     }

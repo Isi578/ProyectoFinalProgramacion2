@@ -1,5 +1,6 @@
 package com.hoteluq.presentation.javafx;
 
+import com.hoteluq.application.promotion.VoucherUsageObserver;
 import com.hoteluq.application.reservation.ActivityHistoryObserver;
 import com.hoteluq.application.reservation.CustomerNotificationObserver;
 import com.hoteluq.application.reservation.HotelCancellationPolicy;
@@ -35,6 +36,7 @@ public final class HotelUqApplication extends Application {
         eventPublisher.subscribe(historyObserver);
         eventPublisher.subscribe(new CustomerNotificationObserver());
         eventPublisher.subscribe(loyaltyPromotion.getLoyaltyObserver());
+        eventPublisher.subscribe(new VoucherUsageObserver(loyaltyPromotion.getPromotionService()));
 
         ReservationUseCase service = new ReservationApplicationService(
                 components.getRoomCatalog(),
