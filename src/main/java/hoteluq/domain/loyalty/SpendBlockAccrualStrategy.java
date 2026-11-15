@@ -7,7 +7,7 @@ public final class SpendBlockAccrualStrategy implements PointsAccrualStrategy {
     private final BigDecimal blockSize;
     private final int pointsPerBlock;
 
-    public SpendBlockAccrualStrategy() { this(new BigDecimal("100000"), 100); }
+    public SpendBlockAccrualStrategy() { this(new BigDecimal("500"), 1); }
 
     public SpendBlockAccrualStrategy(BigDecimal blockSize, int pointsPerBlock) {
         if (blockSize == null || blockSize.signum() <= 0) {

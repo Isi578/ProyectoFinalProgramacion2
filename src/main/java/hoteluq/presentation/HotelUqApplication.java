@@ -3,7 +3,6 @@ package com.hoteluq.presentation.javafx;
 import com.hoteluq.application.reservation.ActivityHistoryObserver;
 import com.hoteluq.application.reservation.CustomerNotificationObserver;
 import com.hoteluq.application.reservation.HotelCancellationPolicy;
-import com.hoteluq.application.reservation.NoPromotionPolicy;
 import com.hoteluq.application.reservation.ReservationApplicationService;
 import com.hoteluq.application.reservation.ReservationEventPublisher;
 import com.hoteluq.application.reservation.ReservationFacade;
@@ -13,22 +12,29 @@ import com.hoteluq.domain.pricing.AccommodationPricingService;
 import com.hoteluq.infrastructure.factory.HotelComponents;
 import com.hoteluq.infrastructure.factory.HotelComponentsFactory;
 import com.hoteluq.infrastructure.factory.InMemoryHotelComponentsFactory;
+import com.hoteluq.infrastructure.factory.InMemoryLoyaltyPromotionFactory;
+import com.hoteluq.infrastructure.factory.LoyaltyPromotionComponents;
 import com.hoteluq.presentation.javafx.reservation.ReservationController;
 import com.hoteluq.presentation.javafx.reservation.ReservationView;
 import javafx.application.Application;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 
+import java.time.Clock;
+
 public final class HotelUqApplication extends Application {
     @Override
     public void start(Stage stage) {
         HotelComponentsFactory componentsFactory = new InMemoryHotelComponentsFactory();
         HotelComponents components = componentsFactory.createComponents();
+        LoyaltyPromotionComponents loyaltyPromotion = new InMemoryLoyaltyPromotionFactory()
+                .create(components, Clock.systemDefaultZone());
 
         ReservationEventPublisher eventPublisher = new ReservationEventPublisher();
         ActivityHistoryObserver historyObserver = new ActivityHistoryObserver();
         eventPublisher.subscribe(historyObserver);
         eventPublisher.subscribe(new CustomerNotificationObserver());
+        eventPublisher.subscribe(loyaltyPromotion.getLoyaltyObserver());
 
         ReservationUseCase service = new ReservationApplicationService(
                 components.getRoomCatalog(),
@@ -36,7 +42,7 @@ public final class HotelUqApplication extends Application {
                 components.getServiceCatalog(),
                 components.getCustomerCatalog(),
                 components.getPaymentGateway(),
-                new NoPromotionPolicy(),
+                loyaltyPromotion.getPromotionService(),
                 new AccommodationPricingService(),
                 new StandardCancellationPolicy(),
                 new HotelCancellationPolicy(),

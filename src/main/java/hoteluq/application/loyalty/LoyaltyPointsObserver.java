@@ -1,4 +1,4 @@
-package hoteluq.application.loyalty;
+package com.hoteluq.application.loyalty;
 
 import com.hoteluq.application.reservation.ReservationEvent;
 import com.hoteluq.application.reservation.ReservationEventObserver;

@@ -1,6 +1,6 @@
 package com.hoteluq.infrastructure.memory;
 
-import com.hoteluq.application.port.ServiceCatalog;
+import com.hoteluq.application.port.ServiceStore;
 import com.hoteluq.domain.model.ServiceOption;
 
 import java.util.List;
@@ -8,7 +8,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
-public final class InMemoryServiceCatalog implements ServiceCatalog {
+public final class InMemoryServiceCatalog implements ServiceStore {
     private final ConcurrentMap<String, ServiceOption> services = new ConcurrentHashMap<>();
 
     public InMemoryServiceCatalog(List<ServiceOption> initialServices) {
@@ -16,6 +16,12 @@ public final class InMemoryServiceCatalog implements ServiceCatalog {
     }
 
     public void add(ServiceOption service) { services.put(service.getId(), service); }
+
+    @Override
+    public ServiceOption save(ServiceOption service) {
+        services.put(service.getId(), service);
+        return service;
+    }
 
     @Override
     public Optional<ServiceOption> findById(String serviceId) {
