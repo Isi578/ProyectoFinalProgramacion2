@@ -52,8 +52,12 @@ public final class InMemoryHotelComponentsFactory implements HotelComponentsFact
         AdditionalService spa = new AdditionalService(
                 "SPA", "Spa access", new BigDecimal("60000"),
                 ServicePricingUnit.PER_STAY, true);
-        ServicePackage wellnessPackage = new ServicePackage(
-                "WELLNESS", "Wellness package", List.of(spa, breakfast));
+        ServicePackage wellnessPackage = ServicePackage.builder()
+                .id("WELLNESS")
+                .name("Wellness package")
+                .add(spa)
+                .add(breakfast)
+                .build();
 
         InMemoryVirtualCardPaymentPort cardPayments = new InMemoryVirtualCardPaymentPort();
         VirtualCardRepository cardRepository = new InMemoryVirtualCardRepository();
