@@ -1,6 +1,13 @@
-package com.hoteluq.reporting;
+package hoteluq.reporting;
 
+/**
+ * ReportType (tipo de informe).
+ *
+ * Contiene los ocho informes solicitados
+ * por el profesor.
+ */
 public enum ReportType {
+
     RESERVATIONS_BY_PERIOD,
     MOST_BOOKED_ROOMS,
     OCCUPANCY,
