@@ -2,7 +2,6 @@ package com.hoteluq.application.reservation;
 
 import com.hoteluq.application.port.ReservationRepository;
 import com.hoteluq.application.port.RoomCatalog;
-import com.hoteluq.domain.model.Reservation;
 import com.hoteluq.domain.model.ReservationStatus;
 import com.hoteluq.domain.model.Room;
 

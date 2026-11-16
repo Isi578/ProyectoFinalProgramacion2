@@ -1,12 +1,9 @@
 package com.hoteluq.application.promotion;
 
-import com.hoteluq.application.port.ReservationRepository;
-
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 /** A promotion: a code, a discount strategy and a list of eligibility conditions. */
 public final class Promotion {

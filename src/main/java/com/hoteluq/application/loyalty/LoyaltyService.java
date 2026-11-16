@@ -17,9 +17,13 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import com.hoteluq.application.port.LoyaltyHistoryQuery;
+
 /** Points ledger: accrual, reversal on cancellation, redemption and history. */
-public final class LoyaltyService implements LoyaltyPointsPort, LoyaltyPointsUseCase {
-    private final LoyaltyAccountRepository accounts;
+// public final class LoyaltyService implements LoyaltyPointsPort, LoyaltyPointsUseCase {
+   public final class LoyaltyService implements LoyaltyPointsPort, LoyaltyPointsUseCase,
+        LoyaltyHistoryQuery {
+private final LoyaltyAccountRepository accounts;
     private final VoucherRepository vouchers;
     private final PointsAccrualStrategy accrualStrategy;
     private final LoyaltyBenefitCatalog benefitCatalog;
@@ -89,4 +93,25 @@ public final class LoyaltyService implements LoyaltyPointsPort, LoyaltyPointsUse
     }
 
     private LocalDateTime now() { return LocalDateTime.now(clock); }
-}
+    /**
+     * findEntries (buscar movimientos).
+     *
+     * Consulta el historial de puntos del cliente.
+     *
+     * No acumula, redime ni modifica puntos.
+     *
+     * synchronized (sincronizado):
+     * evita que otro hilo modifique simultáneamente
+     * el historial durante esta consulta.
+     */
+    @Override
+    public synchronized List<LoyaltyEntry> findEntries(
+            String customerId) {
+
+        // Buscamos la cuenta de puntos del cliente.
+        LoyaltyAccount account = accounts.findOrCreate(customerId);
+
+        // Devolvemos su historial de movimientos.
+        return account.getHistory();
+    }
+   }

@@ -9,7 +9,6 @@ import com.hoteluq.application.payment.PaymentService;
 import com.hoteluq.domain.model.AdditionalService;
 import com.hoteluq.domain.model.Customer;
 import com.hoteluq.domain.model.Room;
-import com.hoteluq.domain.model.ServiceOption;
 import com.hoteluq.domain.model.ServicePackage;
 import com.hoteluq.domain.model.ServicePricingUnit;
 import com.hoteluq.domain.model.VirtualCard;

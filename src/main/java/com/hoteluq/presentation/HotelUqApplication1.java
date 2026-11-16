@@ -1,4 +1,4 @@
-package com.hoteluq.presentation.javafx;
+package com.hoteluq.presentation;
 
 import com.hoteluq.application.promotion.VoucherUsageObserver;
 import com.hoteluq.application.reservation.ActivityHistoryObserver;
@@ -23,7 +23,7 @@ import javafx.stage.Stage;
 
 import java.time.Clock;
 
-public final class HotelUqApplication extends Application {
+public final class HotelUqApplication1 extends Application {
     @Override
     public void start(Stage stage) {
         HotelComponentsFactory componentsFactory = new InMemoryHotelComponentsFactory();
