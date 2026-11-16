@@ -45,7 +45,7 @@
                 <artifactId>javafx-maven-plugin</artifactId>
                 <version>0.0.8</version>
                 <configuration>
-                    <mainClass>com.hoteluq.presentation.javafx.HotelUqApplication</mainClass>
+                    <mainClass>com.hoteluq.presentation.HotelUqApplication</mainClass>
                 </configuration>
             </plugin>
         </plugins>
