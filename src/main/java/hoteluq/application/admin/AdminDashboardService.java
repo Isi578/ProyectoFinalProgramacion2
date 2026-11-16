@@ -28,7 +28,7 @@ import java.time.LocalDateTime;
  * Reúne las operaciones administrativas
  * de los demás módulos.
  *
- * No vuelve a implementar las reglas de pagos,
+ * Se implementa las reglas de pagos preexistentes,
  * reservas, servicios ni promociones.
  *
  * IMPORTANTE:
