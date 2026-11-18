@@ -7,6 +7,8 @@ import com.hoteluq.application.reporting.HotelReportService;
 import com.hoteluq.presentation.javafx.admin.AdminView;
 import com.hoteluq.presentation.javafx.admin.AdminController;
 
+import com.hoteluq.presentation.javafx.auth.CustomerAuthController;
+import com.hoteluq.presentation.javafx.auth.CustomerAuthView;
 import com.hoteluq.reporting.HotelReportQuery;
 
 import com.hoteluq.application.promotion.VoucherUsageObserver;
@@ -207,15 +209,45 @@ public final class HotelUqApplication extends Application {
                         adminView.getRoot()
                 );
 
+        // Construimos la vista de acceso de clientes.
+        CustomerAuthView authView =
+                new CustomerAuthView();
+
+        // Creamos la pestaña de cuenta de cliente.
+        Tab accountTab =
+                new Tab(
+                        "Cuenta de cliente",
+                        authView.getRoot()
+                );
+
+        accountTab.setClosable(false);
         reservationsTab.setClosable(false);
         adminTab.setClosable(false);
 
         // Unimos las pestañas.
         TabPane mainTabs =
                 new TabPane(
+                        accountTab,
                         reservationsTab,
                         adminTab
                 );
+
+        // Conectamos el acceso de clientes con las reservas:
+        // al ingresar, se copia el ID del cliente y se abre
+        // la pestaña de reservas.
+        new CustomerAuthController(
+                authView,
+                components.getCustomerAccountUseCase(),
+                customer -> {
+
+                    view.getCustomerId().setText(
+                            customer.getId()
+                    );
+
+                    mainTabs.getSelectionModel()
+                            .select(reservationsTab);
+                }
+        ).initialize();
 
         /**
          * closeFiscalDay (cerrar día fiscal).
