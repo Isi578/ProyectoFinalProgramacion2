@@ -30,6 +30,9 @@ public final class CustomerAuthController {
     // Acción que se ejecuta cuando un cliente ingresa.
     private final Consumer<Customer> onAuthenticated;
 
+    // Acción que se ejecuta cuando el cliente cierra sesión.
+    private final Runnable onLogout;
+
     /**
      * Constructor de CustomerAuthController.
      *
@@ -41,12 +44,31 @@ public final class CustomerAuthController {
             CustomerAccountUseCase accounts,
             Consumer<Customer> onAuthenticated) {
 
+        this(view, accounts, onAuthenticated, null);
+    }
+
+    /**
+     * Constructor de CustomerAuthController con cierre de sesión.
+     *
+     * @param onAuthenticated acción al iniciar sesión (puede ser null)
+     * @param onLogout        acción al cerrar sesión (puede ser null)
+     */
+    public CustomerAuthController(
+            CustomerAuthView view,
+            CustomerAccountUseCase accounts,
+            Consumer<Customer> onAuthenticated,
+            Runnable onLogout) {
+
         this.view = view;
         this.accounts = accounts;
         this.onAuthenticated =
                 onAuthenticated == null
                         ? customer -> { }
                         : onAuthenticated;
+        this.onLogout =
+                onLogout == null
+                        ? () -> { }
+                        : onLogout;
     }
 
     /**
@@ -201,6 +223,8 @@ public final class CustomerAuthController {
         view.showLogin();
 
         view.showSuccess("Sesión cerrada.");
+
+        onLogout.run();
     }
 
     /**

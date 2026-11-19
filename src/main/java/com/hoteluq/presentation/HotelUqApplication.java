@@ -7,7 +7,6 @@ import com.hoteluq.application.reporting.HotelReportService;
 import com.hoteluq.presentation.javafx.admin.AdminView;
 import com.hoteluq.presentation.javafx.admin.AdminController;
 
-import com.hoteluq.presentation.javafx.auth.CustomerAuthController;
 import com.hoteluq.presentation.javafx.auth.CustomerAuthView;
 import com.hoteluq.reporting.HotelReportQuery;
 
@@ -29,7 +28,7 @@ import com.hoteluq.infrastructure.factory.HotelComponentsFactory;
 import com.hoteluq.infrastructure.factory.InMemoryHotelComponentsFactory;
 import com.hoteluq.infrastructure.factory.InMemoryLoyaltyPromotionFactory;
 import com.hoteluq.infrastructure.factory.LoyaltyPromotionComponents;
-
+import com.hoteluq.presentation.javafx.reservation.ReservationAccessGate;
 import com.hoteluq.presentation.javafx.reservation.ReservationController;
 import com.hoteluq.presentation.javafx.reservation.ReservationView;
 
@@ -136,10 +135,13 @@ public final class HotelUqApplication extends Application {
         ReservationView view =
                 new ReservationView();
 
-        new ReservationController(
-                view,
-                facade
-        ).initialize();
+        ReservationController reservationController =
+                new ReservationController(
+                        view,
+                        facade
+                );
+
+        reservationController.initialize();
 
         /**
          * Creamos el servicio de reportes.
@@ -232,22 +234,15 @@ public final class HotelUqApplication extends Application {
                         adminTab
                 );
 
-        // Conectamos el acceso de clientes con las reservas:
-        // al ingresar, se copia el ID del cliente y se abre
-        // la pestaña de reservas.
-        new CustomerAuthController(
+        // Bloqueamos las reservas hasta que un cliente inicie sesión.
+        ReservationAccessGate.connect(
+                mainTabs,
+                accountTab,
+                reservationsTab,
                 authView,
                 components.getCustomerAccountUseCase(),
-                customer -> {
-
-                    view.getCustomerId().setText(
-                            customer.getId()
-                    );
-
-                    mainTabs.getSelectionModel()
-                            .select(reservationsTab);
-                }
-        ).initialize();
+                reservationController
+        );
 
         /**
          * closeFiscalDay (cerrar día fiscal).
