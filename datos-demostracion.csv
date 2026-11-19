@@ -1,0 +1,68 @@
+# HOTELUQ: DATOS FICTICIOS PARA LA DEMOSTRACIÓN (NO SE CARGAN AL INICIAR)
+# Formato: HABITACION;numero;tipo;tarifa;capacidad
+# CLIENTE;nombre;correo;clave
+# RESERVA;indiceCliente(0-19);habitacion;diasHastaLlegada;noches;servicioO-NINGUNO;diasAtrasPago
+# COMPRA;indiceCliente;servicio;noches;huespedes;diasAtrasPago
+# Administrador para activar: admin / hoteluq123
+# Cliente de prueba: cualquier correo incluido y clave cliente123
+
+HABITACION;301;ESTANDAR;180000;2
+HABITACION;302;ESTANDAR;180000;2
+HABITACION;303;ESTANDAR;180000;2
+HABITACION;304;ESTANDAR;180000;2
+HABITACION;305;ESTANDAR;180000;2
+HABITACION;306;ESTANDAR;180000;2
+HABITACION;307;ESTANDAR;180000;2
+HABITACION;308;SUITE;420000;4
+HABITACION;309;SUITE;420000;4
+HABITACION;310;SUITE;420000;4
+CLIENTE;Laura Gómez;cliente01@hoteluq.demo;cliente123
+CLIENTE;Santiago Ríos;cliente02@hoteluq.demo;cliente123
+CLIENTE;Valentina López;cliente03@hoteluq.demo;cliente123
+CLIENTE;Mateo Hernández;cliente04@hoteluq.demo;cliente123
+CLIENTE;Isabella García;cliente05@hoteluq.demo;cliente123
+CLIENTE;Nicolás Martínez;cliente06@hoteluq.demo;cliente123
+CLIENTE;Sara Ramírez;cliente07@hoteluq.demo;cliente123
+CLIENTE;Daniel Castillo;cliente08@hoteluq.demo;cliente123
+CLIENTE;Mariana Torres;cliente09@hoteluq.demo;cliente123
+CLIENTE;Andrés Vargas;cliente10@hoteluq.demo;cliente123
+CLIENTE;Camila Rodríguez;cliente11@hoteluq.demo;cliente123
+CLIENTE;Sebastián Morales;cliente12@hoteluq.demo;cliente123
+CLIENTE;Juliana Ortiz;cliente13@hoteluq.demo;cliente123
+CLIENTE;Felipe Quintero;cliente14@hoteluq.demo;cliente123
+CLIENTE;Sofía Navarro;cliente15@hoteluq.demo;cliente123
+CLIENTE;Juan Pablo Díaz;cliente16@hoteluq.demo;cliente123
+CLIENTE;Luciana Herrera;cliente17@hoteluq.demo;cliente123
+CLIENTE;Tomás Mejía;cliente18@hoteluq.demo;cliente123
+CLIENTE;Gabriela Salazar;cliente19@hoteluq.demo;cliente123
+CLIENTE;Emilio Cárdenas;cliente20@hoteluq.demo;cliente123
+RESERVA;0;301;-1;3;BREAKFAST;-2
+RESERVA;1;302;-2;2;SPA;-3
+RESERVA;2;303;-3;2;PARKING;-4
+RESERVA;3;304;-4;3;WELLNESS;-5
+RESERVA;4;305;-5;2;BREAKFAST;-6
+RESERVA;5;306;-6;2;SPA;-7
+RESERVA;6;307;-7;3;PARKING;-8
+RESERVA;7;308;-8;2;WELLNESS;-9
+RESERVA;8;309;-9;2;BREAKFAST;-10
+RESERVA;9;310;-10;3;SPA;-11
+RESERVA;10;301;35;2;NINGUNO;-2
+RESERVA;11;302;37;2;NINGUNO;-3
+RESERVA;12;303;39;3;NINGUNO;-4
+RESERVA;13;304;41;2;NINGUNO;-5
+RESERVA;14;305;43;2;NINGUNO;-6
+RESERVA;15;306;45;3;NINGUNO;-7
+RESERVA;16;307;47;2;NINGUNO;-8
+RESERVA;17;308;49;2;NINGUNO;-9
+RESERVA;18;309;51;3;NINGUNO;-10
+RESERVA;19;310;53;2;NINGUNO;-11
+COMPRA;10;BREAKFAST;1;1;-2
+COMPRA;11;PARKING;1;1;-3
+COMPRA;12;SPA;1;1;-4
+COMPRA;13;WELLNESS;1;1;-5
+COMPRA;14;BREAKFAST;1;1;-6
+COMPRA;15;PARKING;1;1;-7
+COMPRA;16;SPA;1;1;-8
+COMPRA;17;WELLNESS;1;1;-9
+COMPRA;18;BREAKFAST;1;1;-10
+COMPRA;19;PARKING;1;1;-11

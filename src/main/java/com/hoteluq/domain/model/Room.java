@@ -23,8 +23,8 @@ public final class Room {
 
     @Override
     public String toString() {
-        return "Room " + number + " - " + roomType.getName()
-                + " - " + roomType.getNightlyRate().toPlainString() + " COP/night"
-                + " - capacity " + capacity;
+        return "Habitación " + number + " - " + roomType.getName()
+                + " - " + roomType.getNightlyRate().toPlainString() + " COP/noche"
+                + " - capacidad " + capacity;
     }
 }

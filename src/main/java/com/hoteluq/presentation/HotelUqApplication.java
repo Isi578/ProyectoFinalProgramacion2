@@ -1,6 +1,7 @@
 package com.hoteluq.presentation;
 
 import com.hoteluq.application.admin.AdminDashboardService;
+import com.hoteluq.application.demo.DemoDataLoader;
 import com.hoteluq.application.reporting.DailyFiscalService;
 import com.hoteluq.application.reporting.HotelReportService;
 import com.hoteluq.application.service.CustomerServicePurchaseService;
@@ -131,7 +132,8 @@ public final class HotelUqApplication extends Application {
                         new StandardCancellationPolicy(),
                         new HotelCancellationPolicy(),
                         eventPublisher,
-                        historyObserver
+                        historyObserver,
+                        loyaltyPromotion.getLoyaltyService()
                 );
 
         // Preparamos la fachada de reservas.
@@ -147,7 +149,8 @@ public final class HotelUqApplication extends Application {
                         view,
                         facade,
                         components.getServiceCatalog(),
-                        components.getCustomerVirtualCardUseCase()
+                        components.getCustomerVirtualCardUseCase(),
+                        loyaltyPromotion.getLoyaltyService()
                 );
 
         reservationController.initialize();
@@ -165,7 +168,8 @@ public final class HotelUqApplication extends Application {
                         components.getPaymentMovementRepository(),
                         components.getCustomerCatalog(),
                         loyaltyPromotion.getLoyaltyService(),
-                        service
+                        service,
+                        components.getServicePurchases()
                 );
 
         // Creamos el servicio fiscal.
@@ -183,7 +187,7 @@ public final class HotelUqApplication extends Application {
         // Creamos el servicio administrativo Facade.
         AdminDashboardService admin =
                 new AdminDashboardService(
-                        "ADMIN-HOTEL-001",
+                        "admin",
                         components.getReservationRepository(),
                         components.getRoomCatalog(),
                         components.getCustomerCatalog(),
@@ -199,12 +203,15 @@ public final class HotelUqApplication extends Application {
                 new AdminView();
 
         // Conectamos su controlador.
-        new AdminController(
+        AdminController adminController = new AdminController(
                 adminView,
                 admin,
                 reports,
-                fiscal
-        ).initialize();
+                fiscal,
+                new DemoDataLoader(components, loyaltyPromotion.getLoyaltyService(),
+                        fiscal, Path.of("datos-demostracion.csv"))
+        );
+        adminController.initialize();
 
         // Creamos la pestaña de reservas.
         Tab reservationsTab =
@@ -231,7 +238,11 @@ public final class HotelUqApplication extends Application {
                 components.getServiceCatalog(),
                 components.getCustomerVirtualCardUseCase(),
                 new CustomerServicePurchaseService(
-                        components.getServiceCatalog(), components.getPaymentGateway()));
+                        components.getServiceCatalog(), components.getPaymentGateway(),
+                        components.getCustomerVirtualCardUseCase(),
+                        loyaltyPromotion.getLoyaltyService(),
+                        components.getServicePurchases()),
+                loyaltyPromotion.getLoyaltyService());
         purchaseController.initialize();
         Tab purchaseTab = new Tab("Compras", purchaseView.getRoot());
 
@@ -270,6 +281,15 @@ public final class HotelUqApplication extends Application {
                         purchaseTab,
                         adminTab
                 );
+
+        // Cerrar la sesión administrativa solo al salir de la pestaña principal.
+        // Cambiar entre Operaciones, Estadísticas y Fiscal NO cierra esa sesión.
+        mainTabs.getSelectionModel().selectedItemProperty().addListener(
+                (observable, previous, current) -> {
+                    if (previous == adminTab && current != adminTab) {
+                        adminController.closeSession();
+                    }
+                });
 
         // Bloqueamos las reservas hasta que un cliente inicie sesión.
         ReservationAccessGate.connect(

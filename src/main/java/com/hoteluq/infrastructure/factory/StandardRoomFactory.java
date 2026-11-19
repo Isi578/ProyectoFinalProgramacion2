@@ -8,7 +8,7 @@ import java.math.BigDecimal;
 public final class StandardRoomFactory extends RoomFactory {
     @Override
     public Room createRoom(String roomNumber, BigDecimal nightlyRate, int capacity) {
-        RoomType type = new RoomType("STANDARD", "Standard", nightlyRate);
+        RoomType type = new RoomType("STANDARD", "Estándar", nightlyRate);
         return new Room(roomNumber, type, capacity, true);
     }
 }

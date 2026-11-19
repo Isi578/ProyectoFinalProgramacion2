@@ -39,6 +39,8 @@ public final class AdminDashboardService {
 
     // Identificador del administrador de demostración.
     private final String demoAdministratorId;
+    private static final String DEMO_PASSWORD = "hoteluq123";
+    private boolean authenticated;
 
     // Repositorios que contienen los datos del hotel.
     private final ReservationRepository reservations;
@@ -84,9 +86,26 @@ public final class AdminDashboardService {
      *
      * No equivale a una autenticación real.
      */
-    public void requireAdministrator(String administratorId) {
+    /**
+     * Comprueba ID y contraseña sin cambiar la autenticación de los clientes.
+     * Credenciales previstas únicamente para la exposición académica.
+     */
+    public synchronized void authenticate(String administratorId, String password) {
+        authenticated = false;
+        if (administratorId == null || password == null
+                || !demoAdministratorId.equals(administratorId.trim())
+                || !DEMO_PASSWORD.equals(password)) {
+            throw new SecurityException("ID o contraseña de administrador incorrectos.");
+        }
+        authenticated = true;
+    }
 
-        if (administratorId == null ||
+    /** Desbloqueo temporal, cancelado al salir de la pestaña principal. */
+    public synchronized void logout() { authenticated = false; }
+
+    public synchronized void requireAdministrator(String administratorId) {
+
+        if (!authenticated || administratorId == null ||
                 !demoAdministratorId.equals(administratorId.trim())) {
 
             throw new SecurityException(

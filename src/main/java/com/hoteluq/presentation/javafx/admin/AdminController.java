@@ -1,6 +1,7 @@
 package com.hoteluq.presentation.javafx.admin;
 
 import com.hoteluq.application.admin.AdminDashboardService;
+import com.hoteluq.application.demo.DemoDataLoader;
 import com.hoteluq.application.reservation.CancellationResult;
 import com.hoteluq.application.reporting.DailyFiscalService;
 import com.hoteluq.domain.model.ServicePricingUnit;
@@ -54,6 +55,7 @@ public final class AdminController {
 
     // Servicio de informes fiscales.
     private final DailyFiscalService fiscal;
+    private final DemoDataLoader demoLoader;
 
     // Informe que se está mostrando.
     private ReportData currentReport;
@@ -68,12 +70,14 @@ public final class AdminController {
             AdminView view,
             AdminDashboardService administration,
             HotelReportQuery reports,
-            DailyFiscalService fiscal) {
+            DailyFiscalService fiscal,
+            DemoDataLoader demoLoader) {
 
         this.view = view;
         this.administration = administration;
         this.reports = reports;
         this.fiscal = fiscal;
+        this.demoLoader = demoLoader;
     }
 
     /**
@@ -85,6 +89,14 @@ public final class AdminController {
 
         // Botón para ingresar como administrador.
         view.login.setOnAction(event -> login());
+        view.logout.setOnAction(event -> closeSession());
+        view.preload.setOnAction(event -> execute(() -> {
+            String summary = demoLoader.load();
+            refreshOperations();
+            view.operationsOutput.appendText("\n" + summary + "\n");
+            view.sessionInfo.setText("Datos de demostración cargados.");
+            view.preload.setDisable(true);
+        }));
 
         // Botón para actualizar los listados.
         view.refreshOperations.setOnAction(
@@ -325,12 +337,12 @@ public final class AdminController {
 
         try {
 
-            administration.requireAdministrator(adminId());
+            administration.authenticate(adminId(), view.administratorPassword.getText());
 
             view.tabs.setDisable(false);
 
             view.sessionInfo.setText(
-                    "Modo administrador DEMO (sin autenticación real)"
+                    "Sesión administrativa activa"
             );
 
             view.sessionInfo.setStyle(
@@ -343,6 +355,7 @@ public final class AdminController {
         } catch (RuntimeException error) {
 
             view.tabs.setDisable(true);
+            administration.logout();
 
             view.sessionInfo.setText(error.getMessage());
 
@@ -357,6 +370,14 @@ public final class AdminController {
      *
      * Obtiene el texto del campo correspondiente.
      */
+    /** Cierra la sesión al abandonar la pestaña principal de Administración. */
+    public void closeSession() {
+        administration.logout();
+        view.tabs.setDisable(true);
+        view.administratorPassword.clear();
+        view.sessionInfo.setText("Sesión cerrada. Introduce tus credenciales para continuar.");
+    }
+
     private String adminId() {
 
         return view.administratorId.getText();
@@ -678,7 +699,7 @@ public final class AdminController {
     private void execute(CheckedAction action) {
 
         try {
-
+            administration.requireAdministrator(adminId());
             action.run();
 
         } catch (Exception error) {
