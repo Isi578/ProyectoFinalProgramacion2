@@ -189,6 +189,8 @@ public final class ReservationView {
         reservationId.setPromptText("Se completa al crear la reserva");
 
         customerId.setEditable(false);
+        customerId.setFocusTraversable(false);
+        customerId.setStyle("-fx-background-color:#f0f5f3;");
 
         GridPane form = new GridPane();
 
@@ -233,7 +235,9 @@ public final class ReservationView {
                 pointsAvailable);
 
         paymentSummary.setWrapText(true);
-        paymentSummary.setStyle("-fx-text-fill:#176b57;-fx-font-weight:bold;");
+        paymentSummary.setStyle("-fx-text-fill:#176b57;-fx-font-weight:bold;"
+                + "-fx-font-size:14px;-fx-background-color:#e1f4ec;"
+                + "-fx-padding:12px;-fx-border-color:#afd3c2;");
         form.add(paymentSummary, 0, row++, 4, 1);
 
         form.addRow(row++,
@@ -248,6 +252,7 @@ public final class ReservationView {
                 historyButton
         );
 
+        actions.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         VBox formCard = new VBox(14, form, actions);
 
         formCard.setPadding(new Insets(16));

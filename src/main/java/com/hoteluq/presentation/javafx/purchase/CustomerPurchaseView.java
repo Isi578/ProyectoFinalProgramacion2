@@ -8,6 +8,10 @@ import javafx.geometry.Insets;
 import javafx.scene.Parent;
 import javafx.scene.control.*;
 import javafx.scene.layout.VBox;
+import javafx.scene.layout.HBox;
+import com.hoteluq.domain.model.AdditionalService;
+import com.hoteluq.domain.model.ServicePackage;
+import com.hoteluq.domain.model.ServicePricingUnit;
 import javafx.util.StringConverter;
 
 import java.math.BigDecimal;
@@ -32,6 +36,9 @@ public final class CustomerPurchaseView {
     private final ComboBox<VirtualCard> cardSelector = new ComboBox<>();
     private final Spinner<Integer> nights = new Spinner<>(1, 30, 1);
     private final Spinner<Integer> guests = new Spinner<>(1, 6, 1);
+    // Los productos por unidad no necesitan solicitar noches ni huéspedes.
+    private final HBox nightsRow = new HBox(10);
+    private final HBox guestsRow = new HBox(10);
     private final Spinner<Integer> points = new Spinner<>(0, 1000000, 0, 10);
     private final Label availablePoints = new Label("Puntos disponibles: 0");
     private final Label estimate = new Label("Total: —");
@@ -56,16 +63,19 @@ public final class CustomerPurchaseView {
         cardSelector.setMaxWidth(Double.MAX_VALUE);
         ScrollPane scroll = new ScrollPane(serviceChoices);
         scroll.setFitToWidth(true);
-        scroll.setPrefViewportHeight(170);
+        scroll.setPrefViewportHeight(220);
         scroll.setStyle("-fx-background-color:white;");
         estimate.setStyle("-fx-font-size:16px;-fx-font-weight:bold;-fx-text-fill:#176b57;");
         message.setWrapText(true);
         root.setPadding(new Insets(22));
         root.setStyle("-fx-background-color:#ecf5f2;");
+        nightsRow.getChildren().addAll(new Label("Noches para calcular los servicios seleccionados:"), nights);
+        guestsRow.getChildren().addAll(new Label("Huéspedes para calcular los servicios seleccionados:"), guests);
+        nightsRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        guestsRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
         root.getChildren().addAll(title, explanation,
-                new Label("Servicios o paquetes disponibles"), scroll, refresh,
-                new Label("Noches para calcular el precio"), nights,
-                new Label("Huéspedes para calcular el precio"), guests,
+                new Label("Catálogo de servicios y productos (puedes seleccionar varios)"), scroll, refresh,
+                nightsRow, guestsRow,
                 availablePoints, new Label("Puntos que quieres utilizar (0 = no usar)"), points,
                 estimate, new Label("Tarjeta para el valor restante"), cardSelector,
                 purchase, message);
@@ -113,6 +123,18 @@ public final class CustomerPurchaseView {
         for (String id : getSelectedServiceIds()) {
             total = total.add(options.get(id).priceFor(nights.getValue(), guests.getValue()));
         }
+        // Los datos de noches/huéspedes aparecen solo cuando algún precio los utiliza.
+        boolean needsNights = false;
+        boolean needsGuests = false;
+        for (String id : getSelectedServiceIds()) {
+            ServiceOption service = options.get(id);
+            needsNights |= usesNights(service);
+            needsGuests |= usesGuests(service);
+        }
+        nightsRow.setVisible(needsNights);
+        nightsRow.setManaged(needsNights);
+        guestsRow.setVisible(needsGuests);
+        guestsRow.setManaged(needsGuests);
         int used = points.getValue();
         BigDecimal reduction = PointsPaymentPolicy.discount(used);
         BigDecimal remaining = total.subtract(reduction);
@@ -121,6 +143,29 @@ public final class CustomerPurchaseView {
         estimate.setText("Servicios: " + money.format(total) + " COP | Puntos: "
                 + used + " (" + money.format(reduction) + " COP) | Tarjeta: "
                 + money.format(remaining.max(BigDecimal.ZERO)) + " COP");
+    }
+
+    /** Comprueba recursivamente la unidad del servicio, también en paquetes. */
+    private boolean usesNights(ServiceOption option) {
+        if (option instanceof AdditionalService service) {
+            return service.getPricingUnit() == ServicePricingUnit.PER_NIGHT
+                    || service.getPricingUnit() == ServicePricingUnit.PER_GUEST_PER_NIGHT;
+        }
+        if (option instanceof ServicePackage pack) {
+            return pack.getComponents().stream().anyMatch(this::usesNights);
+        }
+        return false;
+    }
+
+    private boolean usesGuests(ServiceOption option) {
+        if (option instanceof AdditionalService service) {
+            return service.getPricingUnit() == ServicePricingUnit.PER_GUEST
+                    || service.getPricingUnit() == ServicePricingUnit.PER_GUEST_PER_NIGHT;
+        }
+        if (option instanceof ServicePackage pack) {
+            return pack.getComponents().stream().anyMatch(this::usesGuests);
+        }
+        return false;
     }
 
     public void showMessage(String value) { message.setText(value == null ? "" : value); }

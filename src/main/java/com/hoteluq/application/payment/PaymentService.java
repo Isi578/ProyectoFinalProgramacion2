@@ -112,27 +112,24 @@ public final class PaymentService implements CardRechargeUseCase, PaymentGateway
         return findCard(cardId).getBalance();
     }
 
+    /**
+     * Una sola tarjeta por cliente y con su mismo identificador.
+     * Si se solicita nuevamente, se entrega la existente, sin duplicarla.
+     */
     @Override
     public synchronized VirtualCard issueForCustomer(String customerId) {
-        String ownerId = requiredText(customerId, "Customer id");
+        String ownerId = requiredText(customerId, "ID de cliente");
+        List<VirtualCard> existing = cardRepository.findByCustomerId(ownerId);
+        if (!existing.isEmpty()) {
+            return existing.get(0);
+        }
+        if (cardRepository.findById(ownerId).isPresent()) {
+            throw new IllegalStateException("El identificador de tarjeta ya está ocupado.");
+        }
         VirtualCard card = new VirtualCard(
-                newCardId(),
-                ownerId,
-                BigDecimal.ZERO.setScale(2),
-                true,
-                LocalDateTime.now());
+                ownerId, ownerId, BigDecimal.ZERO.setScale(2),
+                true, LocalDateTime.now());
         return cardRepository.save(card);
-    }
-
-    private String newCardId() {
-        byte[] randomBytes = new byte[6];
-        String cardId;
-        do {
-            CARD_ID_RANDOM.nextBytes(randomBytes);
-            cardId = "CARD-" + Base64.getUrlEncoder().withoutPadding()
-                    .encodeToString(randomBytes).toUpperCase();
-        } while (cardRepository.findById(cardId).isPresent());
-        return cardId;
     }
 
     @Override
@@ -396,7 +393,7 @@ public final class PaymentService implements CardRechargeUseCase, PaymentGateway
                 || movement.getAmount().compareTo(amount) != 0
                 || !java.util.Objects.equals(movement.getRelatedChargeId(), relatedChargeId)
                 || !java.util.Objects.equals(
-                        movement.getOperationReference(), operationReference)) {
+                movement.getOperationReference(), operationReference)) {
             throw new PaymentDeclinedException(
                     "Idempotency key was already used for a different operation.");
         }

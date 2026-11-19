@@ -72,7 +72,7 @@ public final class HotelUqApplication extends Application {
 
     /**
      * start (iniciar).
-     *
+     * <p>
      * Prepara los servicios, controladores,
      * vistas y ventana principal.
      */
@@ -209,7 +209,8 @@ public final class HotelUqApplication extends Application {
                 reports,
                 fiscal,
                 new DemoDataLoader(components, loyaltyPromotion.getLoyaltyService(),
-                        fiscal, Path.of("datos-demostracion.csv"))
+                        fiscal, Path.of("datos-demostracion.csv")),
+                components
         );
         adminController.initialize();
 
@@ -364,7 +365,7 @@ public final class HotelUqApplication extends Application {
 
     /**
      * stop (detener).
-     *
+     * <p>
      * Detiene el reloj fiscal al cerrar
      * la aplicación.
      */
@@ -379,7 +380,7 @@ public final class HotelUqApplication extends Application {
 
     /**
      * main (principal).
-     *
+     * <p>
      * Punto de entrada de la aplicación.
      */
     public static void main(String[] args) {

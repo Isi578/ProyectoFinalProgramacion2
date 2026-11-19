@@ -39,34 +39,9 @@ public final class InMemoryHotelComponentsFactory implements HotelComponentsFact
         roomFactories.register("STANDARD", new StandardRoomFactory());
         roomFactories.register("SUITE", new SuiteRoomFactory());
 
-        List<Room> rooms = List.of(
-                roomFactories.create("STANDARD", "101", new BigDecimal("180000"), 2),
-                roomFactories.create("STANDARD", "102", new BigDecimal("180000"), 3),
-                roomFactories.create("SUITE", "201", new BigDecimal("420000"), 4));
-
-        AdditionalService breakfast = new AdditionalService(
-                "BREAKFAST", "Desayuno", new BigDecimal("25000"),
-                ServicePricingUnit.PER_GUEST_PER_NIGHT, true);
-        AdditionalService parking = new AdditionalService(
-                "PARKING", "Estacionamiento", new BigDecimal("18000"),
-                ServicePricingUnit.PER_NIGHT, true);
-        AdditionalService spa = new AdditionalService(
-                "SPA", "Acceso al spa", new BigDecimal("60000"),
-                ServicePricingUnit.PER_STAY, true);
-        // Productos adicionales: se venden mediante el catálogo compartido,
-        // sin requerir una habitación ni registrar inventarios inexistentes.
-        AdditionalService water = new AdditionalService(
-                "AGUA", "Producto: agua embotellada", new BigDecimal("6000"),
-                ServicePricingUnit.PER_STAY, true);
-        AdditionalService toiletries = new AdditionalService(
-                "KIT_ASEO", "Producto: kit de aseo", new BigDecimal("16000"),
-                ServicePricingUnit.PER_STAY, true);
-        ServicePackage wellnessPackage = ServicePackage.builder()
-                .id("WELLNESS")
-                .name("Paquete bienestar")
-                .add(spa)
-                .add(breakfast)
-                .build();
+        // Un hotel recién iniciado no contiene habitaciones ni servicios ficticios.
+        // El administrador puede registrarlos manualmente o cargar el archivo CSV.
+        List<Room> rooms = List.of();
 
         InMemoryVirtualCardPaymentPort cardPayments = new InMemoryVirtualCardPaymentPort();
         VirtualCardRepository cardRepository = new InMemoryVirtualCardRepository();
@@ -92,7 +67,7 @@ public final class InMemoryHotelComponentsFactory implements HotelComponentsFact
         return new HotelComponents(
                 new InMemoryRoomCatalog(rooms),
                 new InMemoryReservationRepository(),
-                new InMemoryServiceCatalog(List.of(breakfast, parking, spa, water, toiletries, wellnessPackage)),
+                new InMemoryServiceCatalog(List.of()),
                 customerCatalog,
                 customerAccountsWithCards,
                 customerVirtualCardUseCase,
