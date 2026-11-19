@@ -31,8 +31,7 @@ import java.util.List;
 import java.util.Set;
 
 public final class InMemoryHotelComponentsFactory implements HotelComponentsFactory {
-    static final String DEMO_ADMINISTRATOR_ID = "ADMIN-HOTEL-001";
-    static final String DEMO_CUSTOMER_PASSWORD = "HotelUQ-Demo-Only-2026!";
+    static final String DEMO_ADMINISTRATOR_ID = "admin";
 
     @Override
     public HotelComponents createComponents() {
@@ -46,25 +45,31 @@ public final class InMemoryHotelComponentsFactory implements HotelComponentsFact
                 roomFactories.create("SUITE", "201", new BigDecimal("420000"), 4));
 
         AdditionalService breakfast = new AdditionalService(
-                "BREAKFAST", "Breakfast", new BigDecimal("25000"),
+                "BREAKFAST", "Desayuno", new BigDecimal("25000"),
                 ServicePricingUnit.PER_GUEST_PER_NIGHT, true);
         AdditionalService parking = new AdditionalService(
-                "PARKING", "Parking", new BigDecimal("18000"),
+                "PARKING", "Estacionamiento", new BigDecimal("18000"),
                 ServicePricingUnit.PER_NIGHT, true);
         AdditionalService spa = new AdditionalService(
-                "SPA", "Spa access", new BigDecimal("60000"),
+                "SPA", "Acceso al spa", new BigDecimal("60000"),
+                ServicePricingUnit.PER_STAY, true);
+        // Productos adicionales: se venden mediante el catálogo compartido,
+        // sin requerir una habitación ni registrar inventarios inexistentes.
+        AdditionalService water = new AdditionalService(
+                "AGUA", "Producto: agua embotellada", new BigDecimal("6000"),
+                ServicePricingUnit.PER_STAY, true);
+        AdditionalService toiletries = new AdditionalService(
+                "KIT_ASEO", "Producto: kit de aseo", new BigDecimal("16000"),
                 ServicePricingUnit.PER_STAY, true);
         ServicePackage wellnessPackage = ServicePackage.builder()
                 .id("WELLNESS")
-                .name("Wellness package")
+                .name("Paquete bienestar")
                 .add(spa)
                 .add(breakfast)
                 .build();
 
         InMemoryVirtualCardPaymentPort cardPayments = new InMemoryVirtualCardPaymentPort();
         VirtualCardRepository cardRepository = new InMemoryVirtualCardRepository();
-        cardRepository.save(new VirtualCard("CARD-ANA-001", "GUEST-ANA-001",
-                new BigDecimal("2000000"), true, LocalDateTime.now()));
         PaymentMovementRepository movementRepository = new InMemoryPaymentMovementRepository();
         PaymentGateway cardPaymentGateway = new VirtualCardPaymentAdapter(cardPayments);
         PaymentService paymentService = new PaymentService(
@@ -74,26 +79,26 @@ public final class InMemoryHotelComponentsFactory implements HotelComponentsFact
         CardRechargeUseCase cardRechargeUseCase = paymentService;
         CustomerVirtualCardUseCase customerVirtualCardUseCase = paymentService;
 
-        InMemoryCustomerCatalog customerCatalog = new InMemoryCustomerCatalog(List.of(
-                new Customer("GUEST-ANA-001", "Ana Pérez", "ana@example.com")));
+        // La aplicación ya no carga usuarios ni tarjetas ficticias al iniciar.
+        // Los registros de demostración se crean únicamente desde Administración.
+        InMemoryCustomerCatalog customerCatalog = new InMemoryCustomerCatalog(List.of());
         InMemoryCustomerCredentialRepository customerCredentialRepository =
                 new InMemoryCustomerCredentialRepository();
         CustomerAccountService customerAccountService =
                 new CustomerAccountService(customerCatalog, customerCredentialRepository);
-        customerAccountService.initializeCredentialsForExistingCustomer(
-                "GUEST-ANA-001", DEMO_CUSTOMER_PASSWORD);
         CustomerAccountUseCase customerAccountsWithCards =
                 new CustomerAccountWithCardProvisioning(
                         customerAccountService, customerVirtualCardUseCase);
         return new HotelComponents(
                 new InMemoryRoomCatalog(rooms),
                 new InMemoryReservationRepository(),
-                new InMemoryServiceCatalog(List.of(breakfast, parking, spa, wellnessPackage)),
+                new InMemoryServiceCatalog(List.of(breakfast, parking, spa, water, toiletries, wellnessPackage)),
                 customerCatalog,
                 customerAccountsWithCards,
                 customerVirtualCardUseCase,
                 paymentGateway,
                 cardRechargeUseCase,
-                movementRepository);
+                movementRepository,
+                new com.hoteluq.infrastructure.memory.InMemoryServicePurchaseRepository());
     }
 }

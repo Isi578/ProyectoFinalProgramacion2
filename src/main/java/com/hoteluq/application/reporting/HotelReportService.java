@@ -5,6 +5,8 @@ import com.hoteluq.application.port.LoyaltyHistoryQuery;
 import com.hoteluq.application.port.PaymentMovementRepository;
 import com.hoteluq.application.port.ReservationRepository;
 import com.hoteluq.application.port.RoomCatalog;
+import com.hoteluq.application.port.ServicePurchaseRepository;
+import com.hoteluq.domain.model.ServicePurchase;
 import com.hoteluq.application.reservation.ReservationEvent;
 import com.hoteluq.application.reservation.ReservationUseCase;
 import com.hoteluq.domain.loyalty.LoyaltyEntry;
@@ -43,6 +45,15 @@ import java.util.List;
  */
 public final class HotelReportService implements HotelReportQuery {
 
+    private static String reservationStatusText(ReservationStatus status) {
+        return switch (status) {
+            case PENDING_PAYMENT -> "Pendiente de pago";
+            case CONFIRMED -> "Confirmada";
+            case CANCELLED -> "Cancelada";
+        };
+    }
+
+    private final ServicePurchaseRepository purchases;
     private final ReservationRepository reservations;
     private final RoomCatalog rooms;
     private final PaymentMovementRepository movements;
@@ -64,6 +75,19 @@ public final class HotelReportService implements HotelReportQuery {
             LoyaltyHistoryQuery loyalty,
             ReservationUseCase reservationEvents) {
 
+        this(reservations, rooms, movements, customers, loyalty, reservationEvents, null);
+    }
+
+    /** Constructor que además incorpora las compras efectuadas sin reserva. */
+    public HotelReportService(
+            ReservationRepository reservations,
+            RoomCatalog rooms,
+            PaymentMovementRepository movements,
+            CustomerCatalog customers,
+            LoyaltyHistoryQuery loyalty,
+            ReservationUseCase reservationEvents,
+            ServicePurchaseRepository purchases) {
+        this.purchases = purchases;
         this.reservations = reservations;
         this.rooms = rooms;
         this.movements = movements;
@@ -167,7 +191,7 @@ public final class HotelReportService implements HotelReportQuery {
                             + " | Habitación "
                             + reservation.getRoom().getNumber()
                             + " | Estado: "
-                            + reservation.getStatus()
+                            + reservationStatusText(reservation.getStatus())
                             + " | Pago: $"
                             + money(reservation.getTotalPaid())
             );
@@ -434,7 +458,8 @@ public final class HotelReportService implements HotelReportQuery {
             lines.add(
                     movement.getOccurredAt().toLocalDate()
                             + " | "
-                            + movement.getType()
+                            + (movement.getType() == PaymentMovementType.CHARGE
+                            ? "Cobro" : "Reembolso")
                             + " | $"
                             + money(amount)
             );
@@ -476,6 +501,9 @@ public final class HotelReportService implements HotelReportQuery {
         // Recorremos las reservas.
         for (Reservation reservation : reservations.findAll()) {
 
+            // Una reserva cancelada ya no representa un servicio contratado.
+            if (reservation.getStatus() == ReservationStatus.CANCELLED) continue;
+
             LocalDateTime paymentDate =
                     reservation.getPaymentReceipt().getPaidAt();
 
@@ -494,6 +522,18 @@ public final class HotelReportService implements HotelReportQuery {
                 );
 
                 count++;
+            }
+        }
+
+        // También contamos las compras sin habitación: antes se omitían.
+        // El registro separado permite incluir compras con pago 100 % en puntos.
+        if (purchases != null) {
+            for (ServicePurchase purchase : purchases.findAll()) {
+                if (!inside(purchase.purchasedAt(), from, to)) continue;
+                for (String name : purchase.serviceNames()) {
+                    add(chart, name, BigDecimal.ONE);
+                    count++;
+                }
             }
         }
 

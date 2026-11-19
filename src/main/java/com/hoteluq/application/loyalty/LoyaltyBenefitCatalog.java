@@ -22,11 +22,11 @@ public final class LoyaltyBenefitCatalog {
 
     public static LoyaltyBenefitCatalog defaults() {
         return new LoyaltyBenefitCatalog(List.of(
-                new LoyaltyBenefit("DISC_20K", "COP 20,000 off a reservation",
+                new LoyaltyBenefit("DISC_20K", "Descuento de 20.000 COP en una reserva",
                         BenefitType.RESERVATION_DISCOUNT, 400, new BigDecimal("20000")),
-                new LoyaltyBenefit("SVC_SPA", "Spa access",
+                new LoyaltyBenefit("SVC_SPA", "Acceso al spa",
                         BenefitType.SERVICE, 1200, new BigDecimal("60000")),
-                new LoyaltyBenefit("PKG_WELLNESS", "Wellness package",
+                new LoyaltyBenefit("PKG_WELLNESS", "Paquete bienestar",
                         BenefitType.SERVICE_PACKAGE, 2000, new BigDecimal("100000"))));
     }
 

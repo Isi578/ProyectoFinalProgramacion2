@@ -9,8 +9,10 @@ import com.hoteluq.application.port.PaymentMovementRepository;
 import com.hoteluq.application.port.ReservationRepository;
 import com.hoteluq.application.port.RoomCatalog;
 import com.hoteluq.application.port.ServiceCatalog;
+import com.hoteluq.application.port.ServicePurchaseRepository;
 
 public final class HotelComponents {
+    private final ServicePurchaseRepository servicePurchases;
     private final RoomCatalog roomCatalog;
     private final ReservationRepository reservationRepository;
     private final ServiceCatalog serviceCatalog;
@@ -29,8 +31,10 @@ public final class HotelComponents {
                            CustomerVirtualCardUseCase customerVirtualCardUseCase,
                            PaymentGateway paymentGateway,
                            CardRechargeUseCase cardRechargeUseCase,
-                           PaymentMovementRepository paymentMovementRepository) {
+                           PaymentMovementRepository paymentMovementRepository,
+                           ServicePurchaseRepository servicePurchases) {
         this.roomCatalog = roomCatalog;
+        this.servicePurchases = servicePurchases;
         this.reservationRepository = reservationRepository;
         this.serviceCatalog = serviceCatalog;
         this.customerCatalog = customerCatalog;
@@ -41,6 +45,7 @@ public final class HotelComponents {
         this.paymentMovementRepository = paymentMovementRepository;
     }
 
+    public ServicePurchaseRepository getServicePurchases() { return servicePurchases; }
     public RoomCatalog getRoomCatalog() { return roomCatalog; }
     public ReservationRepository getReservationRepository() { return reservationRepository; }
     public ServiceCatalog getServiceCatalog() { return serviceCatalog; }

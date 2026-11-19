@@ -60,13 +60,15 @@ public final class HotelUqApplication1 extends Application {
                 new StandardCancellationPolicy(),
                 new HotelCancellationPolicy(),
                 eventPublisher,
-                historyObserver);
+                historyObserver,
+                loyaltyPromotion.getLoyaltyService());
 
         ReservationFacade facade = new ReservationFacade(service);
         ReservationView view = new ReservationView();
         ReservationController reservationController = new ReservationController(
                 view, facade, components.getServiceCatalog(),
-                components.getCustomerVirtualCardUseCase());
+                components.getCustomerVirtualCardUseCase(),
+                loyaltyPromotion.getLoyaltyService());
         reservationController.initialize();
 
         CustomerAuthView authView = new CustomerAuthView();
@@ -88,7 +90,11 @@ public final class HotelUqApplication1 extends Application {
                 components.getServiceCatalog(),
                 components.getCustomerVirtualCardUseCase(),
                 new CustomerServicePurchaseService(
-                        components.getServiceCatalog(), components.getPaymentGateway()));
+                        components.getServiceCatalog(), components.getPaymentGateway(),
+                        components.getCustomerVirtualCardUseCase(),
+                        loyaltyPromotion.getLoyaltyService(),
+                        components.getServicePurchases()),
+                loyaltyPromotion.getLoyaltyService());
         purchaseController.initialize();
         Tab purchaseTab = new Tab("Compras", purchaseView.getRoot());
         accountTab.setClosable(false);

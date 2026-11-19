@@ -150,6 +150,29 @@ public final class DailyFiscalService {
      *
      * Construye el nombre del archivo fiscal.
      */
+    /**
+     * Cierra expresamente días anteriores para la demostración opcional.
+     * Jamás sobrescribe archivos archivados y no se ejecuta al iniciar.
+     */
+    public synchronized int archiveDemonstrationDays(List<LocalDate> days) throws IOException {
+        int created = 0;
+        Files.createDirectories(directory);
+        for (LocalDate day : days.stream().distinct().sorted().toList()) {
+            if (day == null || !day.isBefore(LocalDate.now())) {
+                throw new IllegalArgumentException("Solo se cierran días anteriores al actual.");
+            }
+            try {
+                Files.writeString(fileFor(day), calculate(day, true),
+                        StandardCharsets.UTF_8,
+                        StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+                created++;
+            } catch (java.nio.file.FileAlreadyExistsException ignored) {
+                // Un cierre existente no debe editarse, ni siquiera en modo demo.
+            }
+        }
+        return created;
+    }
+
     private Path fileFor(LocalDate day) {
 
         return directory.resolve(
