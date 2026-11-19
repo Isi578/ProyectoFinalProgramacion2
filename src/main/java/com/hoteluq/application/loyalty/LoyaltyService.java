@@ -21,9 +21,9 @@ import com.hoteluq.application.port.LoyaltyHistoryQuery;
 
 /** Points ledger: accrual, reversal on cancellation, redemption and history. */
 // public final class LoyaltyService implements LoyaltyPointsPort, LoyaltyPointsUseCase {
-   public final class LoyaltyService implements LoyaltyPointsPort, LoyaltyPointsUseCase,
+public final class LoyaltyService implements LoyaltyPointsPort, LoyaltyPointsUseCase,
         LoyaltyHistoryQuery {
-private final LoyaltyAccountRepository accounts;
+    private final LoyaltyAccountRepository accounts;
     private final VoucherRepository vouchers;
     private final PointsAccrualStrategy accrualStrategy;
     private final LoyaltyBenefitCatalog benefitCatalog;
@@ -47,6 +47,19 @@ private final LoyaltyAccountRepository accounts;
         accounts.findOrCreate(customerId).accrue(reservationId, points, now());
     }
 
+    /**
+     * Exclusivo de la precarga ficticia: respeta la fecha histórica de cobro.
+     * No afecta la acumulación ordinaria, que utiliza el reloj actual.
+     */
+    public synchronized void recordDemonstrationSpend(String customerId, String reservationId,
+                                                      BigDecimal amountPaid,
+                                                      LocalDateTime historicalDate) {
+        int points = accrualStrategy.pointsFor(amountPaid);
+        if (points > 0) {
+            accounts.findOrCreate(customerId).accrue(reservationId, points, historicalDate);
+        }
+    }
+
     /** Called when a reservation is cancelled: the points it generated no longer apply. */
     public synchronized int revertSpend(String customerId, String reservationId) {
         return accounts.findOrCreate(customerId).revoke(reservationId, now());
@@ -55,6 +68,34 @@ private final LoyaltyAccountRepository accounts;
     @Override
     public synchronized int getAvailablePoints(String customerId) {
         return accounts.findOrCreate(customerId).availablePoints(now());
+    }
+
+    /**
+     * Reserva los puntos antes de enviar el cargo a tarjeta.
+     * Si el cargo falla, el servicio que invoca esta operación los restituye.
+     */
+    @Override
+    public synchronized void spendForPayment(String customerId, int points, String operationId) {
+        if (points == 0) return;
+        if (operationId == null || operationId.isBlank()) {
+            throw new LoyaltyException("Es obligatorio identificar el pago con puntos.");
+        }
+        accounts.findOrCreate(customerId).redeem(points,
+                "Pago con puntos: " + operationId, now());
+    }
+
+    /**
+     * Devuelve puntos en un lote nuevo con identificador único.
+     * El mismo identificador no puede devolverse dos veces.
+     */
+    @Override
+    public synchronized void restorePayment(String customerId, int points, String operationId) {
+        if (points == 0) return;
+        if (points < 0 || operationId == null || operationId.isBlank()) {
+            throw new LoyaltyException("Devolución de puntos inválida.");
+        }
+        accounts.findOrCreate(customerId).accrue(
+                "DEVOLUCION-" + operationId, points, now());
     }
 
     /** Contract method: {@code points} must match the benefit's cost exactly. */
@@ -116,4 +157,4 @@ private final LoyaltyAccountRepository accounts;
         // Devolvemos su historial de movimientos.
         return account.getHistory();
     }
-   }
+}

@@ -20,6 +20,11 @@ public final class ReservationFacade implements ReservationUseCase {
     }
 
     @Override
+    public ReservationQuote quoteReservation(ReservationRequest request) {
+        return reservationService.quoteReservation(request);
+    }
+
+    @Override
     public Reservation createReservation(ReservationRequest request) {
         return reservationService.createReservation(request);
     }

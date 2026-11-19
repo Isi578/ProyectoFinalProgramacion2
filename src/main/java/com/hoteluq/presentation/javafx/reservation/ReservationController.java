@@ -2,6 +2,8 @@ package com.hoteluq.presentation.javafx.reservation;
 
 import com.hoteluq.application.reservation.CancellationResult;
 import com.hoteluq.application.reservation.ReservationRequest;
+import com.hoteluq.application.reservation.ReservationQuote;
+import com.hoteluq.application.contract.LoyaltyPointsUseCase;
 import com.hoteluq.application.reservation.ReservationUseCase;
 import com.hoteluq.application.port.ServiceCatalog;
 import com.hoteluq.application.contract.CustomerVirtualCardUseCase;
@@ -43,6 +45,7 @@ public final class ReservationController {
     private final ServiceCatalog serviceCatalog;
 
     private final CustomerVirtualCardUseCase customerCards;
+    private final LoyaltyPointsUseCase loyalty;
 
     // ID del cliente con sesión iniciada (null si no hay).
     private String sessionCustomerId;
@@ -56,12 +59,14 @@ public final class ReservationController {
             ReservationView view,
             ReservationUseCase reservationUseCase,
             ServiceCatalog serviceCatalog,
-            CustomerVirtualCardUseCase customerCards) {
+            CustomerVirtualCardUseCase customerCards,
+            LoyaltyPointsUseCase loyalty) {
 
         this.view = view;
         this.reservationUseCase = reservationUseCase;
         this.serviceCatalog = serviceCatalog;
         this.customerCards = customerCards;
+        this.loyalty = loyalty;
     }
 
     /**
@@ -95,6 +100,7 @@ public final class ReservationController {
         view.getAvailabilityButton()
                 .setOnAction(event -> checkAvailability());
 
+        view.getQuoteButton().setOnAction(event -> quote());
         view.getCreateButton()
                 .setOnAction(event -> createReservation());
 
@@ -123,6 +129,7 @@ public final class ReservationController {
         view.showSession(customer.getFullName(), customer.getId());
 
         view.setCards(customerCards.findCardsForCustomer(customer.getId()));
+        view.showPointsAvailable(loyalty.getAvailablePoints(customer.getId()));
 
         view.setActionsDisabled(false);
 
@@ -198,6 +205,20 @@ public final class ReservationController {
         }
     }
 
+    /** Muestra el precio real calculado por el servicio de reservas, sin cobrar. */
+    private void quote() {
+        if (!hasSession()) return;
+        try {
+            ReservationQuote quoted = reservationUseCase.quoteReservation(
+                    buildReservationRequest(null));
+            view.showPaymentSummary("Subtotal: " + quoted.subtotal().toPlainString()
+                    + " COP | Con promoción: " + quoted.afterPromotion().toPlainString()
+                    + " COP | Puntos: " + quoted.pointsToSpend() + " ("
+                    + quoted.pointsValue().toPlainString() + " COP) | A pagar con tarjeta: "
+                    + quoted.cardDue().toPlainString() + " COP");
+        } catch (RuntimeException exception) { showError(exception); }
+    }
+
     private void createReservation() {
 
         if (!hasSession()) {
@@ -210,6 +231,11 @@ public final class ReservationController {
             refreshServiceCatalog();
 
             ReservationRequest request = buildReservationRequest(null);
+            // El mismo cálculo se comprueba de nuevo al cobrar para evitar
+            // reservas sin disponibilidad o puntos insuficientes.
+            ReservationQuote quoted = reservationUseCase.quoteReservation(request);
+            view.showPaymentSummary("Confirmando: " + quoted.cardDue().toPlainString()
+                    + " COP con tarjeta y " + quoted.pointsToSpend() + " puntos.");
 
             if (pendingReservationRequest == null
                     || !hasSameDetails(request, pendingReservationRequest)) {
@@ -225,6 +251,11 @@ public final class ReservationController {
             pendingReservationRequest = null;
 
             view.getReservationId().setText(reservation.getId());
+            view.getPointsToSpend().getValueFactory().setValue(0);
+            view.showPointsAvailable(loyalty.getAvailablePoints(sessionCustomerId));
+            view.showPaymentSummary("Pago confirmado: "
+                    + reservation.getTotalPaid().toPlainString() + " COP y "
+                    + reservation.getPointsUsed() + " puntos.");
 
             show("Reserva creada y pagada correctamente."
                     + LINE
@@ -255,7 +286,8 @@ public final class ReservationController {
                 .guestCount(view.getGuestCount().getValue())
                 .serviceIds(view.getSelectedServiceIds())
                 .cardId(view.getSelectedCardId())
-                .promotionCode(view.getPromotionCode().getText());
+                .promotionCode(view.getPromotionCode().getText())
+                .pointsToSpend(view.getPointsToSpend().getValue());
 
         if (paymentOperationId != null) {
 
@@ -275,6 +307,7 @@ public final class ReservationController {
                 && Objects.equals(first.getCheckOutAt(), second.getCheckOutAt())
                 && first.getGuestCount() == second.getGuestCount()
                 && Objects.equals(first.getServiceIds(), second.getServiceIds())
+                && first.getPointsToSpend() == second.getPointsToSpend()
                 && Objects.equals(first.getCardId(), second.getCardId())
                 && Objects.equals(
                 first.getPromotionCode(),
@@ -310,6 +343,7 @@ public final class ReservationController {
             CancellationResult result = reservationUseCase
                     .cancelReservation(reservationId, LocalDateTime.now());
 
+            view.showPointsAvailable(loyalty.getAvailablePoints(sessionCustomerId));
             show("Reserva cancelada."
                     + LINE
                     + ReservationMessages

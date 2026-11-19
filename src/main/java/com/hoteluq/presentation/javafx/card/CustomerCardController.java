@@ -95,9 +95,18 @@ public final class CustomerCardController {
                 .map(movement -> movement.getOccurredAt().format(DATE_FORMAT)
                         + " | " + movementType(movement.getType())
                         + " | " + movementAmount(movement)
-                        + " | " + movement.getStatus())
+                        + " | " + movementStatus(movement.getStatus()))
                 .reduce((left, right) -> left + System.lineSeparator() + right)
                 .orElse("Todavía no hay movimientos registrados.");
+    }
+
+    /** Traduce únicamente el estado visible sin modificar el enum del dominio. */
+    private static String movementStatus(com.hoteluq.domain.model.PaymentMovementStatus status) {
+        return switch (status) {
+            case PENDING -> "Pendiente";
+            case EXTERNAL_SUCCEEDED -> "Aprobado externamente";
+            case COMPLETED -> "Completado";
+        };
     }
 
     private static String movementType(PaymentMovementType type) {

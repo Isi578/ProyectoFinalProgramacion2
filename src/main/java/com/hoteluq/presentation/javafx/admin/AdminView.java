@@ -9,6 +9,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.DatePicker;
 import javafx.scene.control.Label;
+import javafx.scene.control.PasswordField;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
@@ -39,10 +40,13 @@ public final class AdminView {
 
     // Campos de acceso administrativo.
     final TextField administratorId = new TextField();
+    final PasswordField administratorPassword = new PasswordField();
     final Button login = new Button("Ingresar");
+    final Button logout = new Button("Cerrar sesión");
+    final Button preload = new Button("Cargar demostración desde archivo");
 
     final Label sessionInfo =
-            new Label("Acceso administrativo de demostración");
+            new Label("Introduce ID y contraseña para administrar.");
 
     final TabPane tabs = new TabPane();
 
@@ -193,7 +197,9 @@ public final class AdminView {
                 "ID del administrador"
         );
 
-        administratorId.setPrefWidth(210);
+        administratorId.setPrefWidth(115);
+        administratorPassword.setPromptText("Contraseña");
+        administratorPassword.setPrefWidth(145);
 
         login.setStyle(
                 "-fx-background-color:#176b57;"
@@ -209,7 +215,9 @@ public final class AdminView {
                         12,
                         new Label("Administrador:"),
                         administratorId,
+                        administratorPassword,
                         login,
+                        logout,
                         sessionInfo
                 )
         );
@@ -288,6 +296,18 @@ public final class AdminView {
                 ServicePricingUnit.values()
         );
 
+        serviceUnit.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(ServicePricingUnit value) {
+                if (value == null) return "";
+                return switch (value) {
+                    case PER_STAY -> "Por estadía";
+                    case PER_NIGHT -> "Por noche";
+                    case PER_GUEST -> "Por huésped";
+                    case PER_GUEST_PER_NIGHT -> "Por huésped y noche";
+                };
+            }
+            @Override public ServicePricingUnit fromString(String text) { return null; }
+        });
         serviceUnit.getSelectionModel().selectFirst();
 
         HBox row3 = row(
@@ -323,6 +343,7 @@ public final class AdminView {
                 row3,
                 row4,
                 refreshOperations,
+                preload,
                 operationsOutput
         );
 

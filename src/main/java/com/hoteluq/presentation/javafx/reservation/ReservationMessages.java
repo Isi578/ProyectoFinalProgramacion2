@@ -235,7 +235,8 @@ public final class ReservationMessages {
                 + " | " + format(reservation.getCheckInAt())
                 + " a " + format(reservation.getCheckOutAt())
                 + " | " + reservation.getTotalPaid().toPlainString()
-                + " COP | " + status(reservation.getStatus());
+                + " COP con tarjeta | " + reservation.getPointsUsed()
+                + " puntos | " + status(reservation.getStatus());
     }
 
     /**

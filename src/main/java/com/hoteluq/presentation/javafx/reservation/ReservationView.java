@@ -99,6 +99,12 @@ public final class ReservationView {
 
     private final TextField promotionCode = new TextField();
 
+    // Los puntos son opcionales: cero significa pagar todo con la tarjeta.
+    private final Spinner<Integer> pointsToSpend = new Spinner<>(0, 1000000, 0, 10);
+    private final Label pointsAvailable = new Label("Puntos disponibles: 0");
+    private final Label paymentSummary = new Label("Pulsa «Calcular total» antes de reservar.");
+    private final Button quoteButton = styledButton("Calcular total", SECONDARY_BUTTON_STYLE);
+
     private final TextField reservationId = new TextField();
 
     private final Spinner<Integer> guestCount =
@@ -223,11 +229,20 @@ public final class ReservationView {
         form.add(servicesCard, 0, row++, 4, 1);
 
         form.addRow(row++,
+                label("Puntos para pagar (opcional)"), pointsToSpend,
+                pointsAvailable);
+
+        paymentSummary.setWrapText(true);
+        paymentSummary.setStyle("-fx-text-fill:#176b57;-fx-font-weight:bold;");
+        form.add(paymentSummary, 0, row++, 4, 1);
+
+        form.addRow(row++,
                 label("ID de reserva"), reservationId);
 
         HBox actions = new HBox(
                 8,
                 availabilityButton,
+                quoteButton,
                 createButton,
                 cancelButton,
                 historyButton
@@ -259,7 +274,9 @@ public final class ReservationView {
 
         root.setTop(header);
 
-        root.setCenter(content);
+        ScrollPane mainScroll = new ScrollPane(content);
+        mainScroll.setFitToWidth(true);
+        root.setCenter(mainScroll);
 
         root.setPadding(new Insets(16));
 
@@ -304,6 +321,9 @@ public final class ReservationView {
         updateServicePriceSummary();
 
         promotionCode.clear();
+        pointsToSpend.getValueFactory().setValue(0);
+        pointsAvailable.setText("Puntos disponibles: 0");
+        paymentSummary.setText("Pulsa «Calcular total» antes de reservar.");
     }
 
     /**
@@ -314,6 +334,8 @@ public final class ReservationView {
         availabilityButton.setDisable(disabled);
 
         createButton.setDisable(disabled);
+        quoteButton.setDisable(disabled);
+        pointsToSpend.setDisable(disabled);
 
         cancelButton.setDisable(disabled);
 
@@ -495,6 +517,12 @@ public final class ReservationView {
     public Button getAvailabilityButton() { return availabilityButton; }
 
     public Button getCreateButton() { return createButton; }
+    public Button getQuoteButton() { return quoteButton; }
+    public Spinner<Integer> getPointsToSpend() { return pointsToSpend; }
+    public void showPointsAvailable(int points) {
+        pointsAvailable.setText("Puntos disponibles: " + points);
+    }
+    public void showPaymentSummary(String summary) { paymentSummary.setText(summary); }
 
     public Button getCancelButton() { return cancelButton; }
 

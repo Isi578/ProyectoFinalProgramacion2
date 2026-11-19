@@ -9,20 +9,26 @@ import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+/**
+ * Pruebas de la fábrica sin registros precargados automáticamente.
+ * Los clientes se crean únicamente por registro o precarga opcional.
+ */
 class InMemoryHotelComponentsFactoryTest {
-    private static final String CARD_ID = "CARD-ANA-001";
-
     @Test
-    void allowsConfiguredAdministratorToRechargeAndRecordsMovement() {
+    void allowsConfiguredAdministratorToRechargeNewCardAndRecordsMovement() {
         HotelComponents components = new InMemoryHotelComponentsFactory().createComponents();
+        var customer = components.getCustomerAccountUseCase().register(
+                "Prueba Recarga", "recarga@example.com", "clave123");
+        String cardId = components.getCustomerVirtualCardUseCase()
+                .findCardsForCustomer(customer.getId()).get(0).getCardId();
 
         components.getCardRechargeUseCase().recharge(
                 InMemoryHotelComponentsFactory.DEMO_ADMINISTRATOR_ID,
-                CARD_ID,
-                new BigDecimal("250.00"));
+                cardId, new BigDecimal("250.00"));
 
-        var recharge = components.getPaymentMovementRepository().findByCardId(CARD_ID).get(0);
+        var recharge = components.getPaymentMovementRepository().findByCardId(cardId).get(0);
         assertEquals(PaymentMovementType.RECHARGE, recharge.getType());
         assertEquals(0, new BigDecimal("250.00").compareTo(recharge.getAmount()));
     }
@@ -30,23 +36,28 @@ class InMemoryHotelComponentsFactoryTest {
     @Test
     void rejectsUnconfiguredUserAndDoesNotRecordMovement() {
         HotelComponents components = new InMemoryHotelComponentsFactory().createComponents();
+        var customer = components.getCustomerAccountUseCase().register(
+                "Prueba Control", "control@example.com", "clave123");
+        String cardId = components.getCustomerVirtualCardUseCase()
+                .findCardsForCustomer(customer.getId()).get(0).getCardId();
 
         assertThrows(PaymentDeclinedException.class,
                 () -> components.getCardRechargeUseCase().recharge(
-                        "GUEST-ANA-001", CARD_ID, new BigDecimal("250.00")));
+                        "administrador-falso", cardId, new BigDecimal("250.00")));
         assertEquals(0, components.getPaymentMovementRepository().findAll().size());
     }
 
     @Test
-    void demoCustomerCanAuthenticateAndRejectsIncorrectPassword() {
+    void startsWithoutDemoCustomerAndAcceptsRegisteredCustomer() {
         HotelComponents components = new InMemoryHotelComponentsFactory().createComponents();
-
-        var customer = components.getCustomerAccountUseCase().authenticate(
-                "ANA@example.com", InMemoryHotelComponentsFactory.DEMO_CUSTOMER_PASSWORD);
-
-        assertEquals("GUEST-ANA-001", customer.getId());
+        assertTrue(components.getCustomerCatalog().findAll().isEmpty());
         assertThrows(InvalidCredentialsException.class,
                 () -> components.getCustomerAccountUseCase().authenticate(
-                        "ana@example.com", "incorrect-demo-password"));
+                        "ana@example.com", "clave-vieja"));
+
+        var customer = components.getCustomerAccountUseCase().register(
+                "Cliente Nuevo", "nuevo@example.com", "clave123");
+        assertEquals(customer, components.getCustomerAccountUseCase()
+                .authenticate("nuevo@example.com", "clave123"));
     }
 }

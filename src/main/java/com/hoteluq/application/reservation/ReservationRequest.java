@@ -13,6 +13,7 @@ public final class ReservationRequest {
     private final String cardId;
     private final String promotionCode;
     private final String paymentOperationId;
+    private final int pointsToSpend;
 
     private ReservationRequest(Builder builder) {
         customerId = builder.customerId;
@@ -24,6 +25,7 @@ public final class ReservationRequest {
         cardId = builder.cardId;
         promotionCode = builder.promotionCode;
         paymentOperationId = builder.paymentOperationId;
+        pointsToSpend = builder.pointsToSpend;
     }
 
     public static Builder builder() { return new Builder(); }
@@ -36,6 +38,7 @@ public final class ReservationRequest {
     public String getCardId() { return cardId; }
     public String getPromotionCode() { return promotionCode; }
     public String getPaymentOperationId() { return paymentOperationId; }
+    public int getPointsToSpend() { return pointsToSpend; }
 
     public static final class Builder {
         private String customerId;
@@ -47,6 +50,7 @@ public final class ReservationRequest {
         private String cardId;
         private String promotionCode;
         private String paymentOperationId;
+        private int pointsToSpend;
 
         public Builder customerId(String value) { customerId = value; return this; }
         public Builder roomNumber(String value) { roomNumber = value; return this; }
@@ -57,6 +61,7 @@ public final class ReservationRequest {
         public Builder cardId(String value) { cardId = value; return this; }
         public Builder promotionCode(String value) { promotionCode = value; return this; }
         public Builder paymentOperationId(String value) { paymentOperationId = value; return this; }
+        public Builder pointsToSpend(int value) { pointsToSpend = value; return this; }
 
         public ReservationRequest build() {
             return new ReservationRequest(this);

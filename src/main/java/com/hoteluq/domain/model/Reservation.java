@@ -19,6 +19,9 @@ public final class Reservation {
     private final int guestCount;
     private final List<ServiceOption> services;
     private final BigDecimal totalPaid;
+    // Monto equivalente a los puntos aplicados antes del cobro con tarjeta.
+    private final BigDecimal pointsValue;
+    private final int pointsUsed;
     private final PaymentReceipt paymentReceipt;
     private ReservationState state;
 
@@ -26,6 +29,15 @@ public final class Reservation {
                        LocalDateTime checkOutAt, int guestCount,
                        List<ServiceOption> services, BigDecimal totalPaid,
                        PaymentReceipt paymentReceipt) {
+        this(customer, room, checkInAt, checkOutAt, guestCount,
+                services, totalPaid, paymentReceipt, 0, BigDecimal.ZERO);
+    }
+
+    /** Crea una reserva con pago mixto y conserva el valor efectivo del recibo. */
+    public Reservation(Customer customer, Room room, LocalDateTime checkInAt,
+                       LocalDateTime checkOutAt, int guestCount,
+                       List<ServiceOption> services, BigDecimal totalPaid,
+                       PaymentReceipt paymentReceipt, int pointsUsed, BigDecimal pointsValue) {
         this.id = UUID.randomUUID().toString();
         this.customer = customer;
         this.room = room;
@@ -34,6 +46,8 @@ public final class Reservation {
         this.guestCount = guestCount;
         this.services = List.copyOf(services);
         this.totalPaid = totalPaid;
+        this.pointsUsed = pointsUsed;
+        this.pointsValue = pointsValue;
         this.paymentReceipt = paymentReceipt;
         this.state = new PendingPaymentState();
     }
@@ -56,15 +70,25 @@ public final class Reservation {
     public LocalDateTime getCheckOutAt() { return checkOutAt; }
     public int getGuestCount() { return guestCount; }
     public List<ServiceOption> getServices() { return services; }
+    /** Dinero efectivamente cobrado a la tarjeta (no incluye puntos). */
     public BigDecimal getTotalPaid() { return totalPaid; }
+    public BigDecimal getPointsValue() { return pointsValue; }
+    public int getPointsUsed() { return pointsUsed; }
+    public BigDecimal getTotalValue() { return totalPaid.add(pointsValue); }
     public PaymentReceipt getPaymentReceipt() { return paymentReceipt; }
     public ReservationStatus getStatus() { return state.status(); }
 
     @Override
     public String toString() {
-        return "Reservation " + id + " | " + customer.getFullName()
-                + " | room " + room.getNumber() + " | "
-                + checkInAt + " to " + checkOutAt + " | "
-                + totalPaid.toPlainString() + " COP | " + getStatus();
+        String stateLabel = switch (getStatus()) {
+            case PENDING_PAYMENT -> "Pendiente de pago";
+            case CONFIRMED -> "Confirmada";
+            case CANCELLED -> "Cancelada";
+        };
+        return "Reserva " + id + " | " + customer.getFullName()
+                + " | habitación " + room.getNumber() + " | "
+                + checkInAt + " hasta " + checkOutAt + " | "
+                + "Tarjeta: " + totalPaid.toPlainString() + " COP | "
+                + "Puntos utilizados: " + pointsUsed + " | " + stateLabel;
     }
 }

@@ -8,6 +8,7 @@ import java.util.List;
 
 public interface ReservationUseCase {
     List<Room> findAvailableRooms(LocalDateTime checkInAt, LocalDateTime checkOutAt, int guestCount);
+    ReservationQuote quoteReservation(ReservationRequest request);
     Reservation createReservation(ReservationRequest request);
     CancellationResult cancelReservation(String reservationId, LocalDateTime cancelledAt);
     List<Reservation> getGuestReservations(String customerId);

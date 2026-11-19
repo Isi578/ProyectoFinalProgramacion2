@@ -13,6 +13,8 @@ import com.hoteluq.domain.model.Reservation;
 import com.hoteluq.domain.model.ReservationStatus;
 import com.hoteluq.domain.model.Room;
 import com.hoteluq.domain.model.ServiceOption;
+import com.hoteluq.application.contract.LoyaltyPointsUseCase;
+import com.hoteluq.application.loyalty.PointsPaymentPolicy;
 import com.hoteluq.domain.pricing.AccommodationPricingService;
 
 import java.math.BigDecimal;
@@ -37,6 +39,7 @@ public final class ReservationApplicationService implements ReservationUseCase,
     private final CancellationPolicy hotelCancellationPolicy;
     private final ReservationEventPublisher eventPublisher;
     private final ActivityHistoryObserver historyObserver;
+    private final LoyaltyPointsUseCase loyalty;
 
     public ReservationApplicationService(
             RoomCatalog roomCatalog,
@@ -50,6 +53,21 @@ public final class ReservationApplicationService implements ReservationUseCase,
             CancellationPolicy hotelCancellationPolicy,
             ReservationEventPublisher eventPublisher,
             ActivityHistoryObserver historyObserver) {
+        this(roomCatalog, reservationRepository, serviceCatalog, customerCatalog,
+                paymentGateway, promotionPolicy, pricingService, guestCancellationPolicy,
+                hotelCancellationPolicy, eventPublisher, historyObserver, null);
+    }
+
+    /** Permite utilizar puntos dentro de la reserva, antes de realizar el cargo. */
+    public ReservationApplicationService(
+            RoomCatalog roomCatalog, ReservationRepository reservationRepository,
+            ServiceCatalog serviceCatalog, CustomerCatalog customerCatalog,
+            PaymentGateway paymentGateway, PromotionPolicy promotionPolicy,
+            AccommodationPricingService pricingService,
+            CancellationPolicy guestCancellationPolicy, CancellationPolicy hotelCancellationPolicy,
+            ReservationEventPublisher eventPublisher, ActivityHistoryObserver historyObserver,
+            LoyaltyPointsUseCase loyalty) {
+        this.loyalty = loyalty;
         this.roomCatalog = roomCatalog;
         this.reservationRepository = reservationRepository;
         this.serviceCatalog = serviceCatalog;
@@ -70,9 +88,67 @@ public final class ReservationApplicationService implements ReservationUseCase,
         return availabilityService.findAvailableRooms(checkInAt, checkOutAt, guestCount);
     }
 
+    /**
+     * Cotización sin efectos laterales: revisa habitación, fechas, servicios,
+     * promociones y disponibilidad de puntos antes de crear la reserva.
+     */
+    @Override
+    public synchronized ReservationQuote quoteReservation(ReservationRequest request) {
+        validateRequest(request, false);
+        ReservationCalculation data = calculateReservation(request);
+        return data.quote();
+    }
+
     @Override
     public synchronized Reservation createReservation(ReservationRequest request) {
-        validateRequest(request);
+        validateRequest(request, true);
+        ReservationCalculation data = calculateReservation(request);
+        String operationId = request.getPaymentOperationId().trim();
+        int points = request.getPointsToSpend();
+        boolean spent = false;
+        PaymentReceipt payment;
+        try {
+            if (points > 0) {
+                loyalty.spendForPayment(data.customer().getId(), points, operationId);
+                spent = true;
+            }
+            payment = paymentGateway.charge(operationId,
+                    paymentOperationReference(request, data.customer().getId(), data.room(),
+                            data.services(), data.quote().cardDue()),
+                    request.getCardId().trim(), data.customer().getId(), data.quote().cardDue());
+        } catch (RuntimeException failure) {
+            if (spent) loyalty.restorePayment(data.customer().getId(), points, operationId);
+            throw failure;
+        }
+
+        Reservation reservation = new Reservation(data.customer(), data.room(),
+                request.getCheckInAt(), request.getCheckOutAt(), request.getGuestCount(),
+                data.services(), data.quote().cardDue(), payment, points,
+                data.quote().pointsValue());
+        reservation.confirm();
+        try {
+            reservationRepository.save(reservation);
+        } catch (RuntimeException saveFailure) {
+            try {
+                paymentGateway.refund("reservation-compensation:" + operationId,
+                        payment, payment.getAmount());
+            } catch (RuntimeException refundFailure) {
+                saveFailure.addSuppressed(refundFailure);
+            }
+            if (spent) loyalty.restorePayment(data.customer().getId(), points, operationId);
+            throw new ReservationException(
+                    "No se pudo guardar la reserva; se intentó devolver el pago.", saveFailure);
+        }
+        publish(ReservationEvent.Type.CREATED, reservation);
+        return reservation;
+    }
+
+    /** Datos ya validados reutilizados por la cotización y la confirmación. */
+    private record ReservationCalculation(Customer customer, Room room,
+                                          List<ServiceOption> services,
+                                          ReservationQuote quote) { }
+
+    private ReservationCalculation calculateReservation(ReservationRequest request) {
         AvailabilityService.validateStay(request.getCheckInAt(), request.getCheckOutAt());
 
         if (request.getCheckInAt().isBefore(LocalDateTime.now())) {
@@ -115,32 +191,23 @@ public final class ReservationApplicationService implements ReservationUseCase,
             throw new InvalidReservationException("Promotion produced an invalid reservation total.");
         }
 
-        PaymentReceipt payment = paymentGateway.charge(
-                request.getPaymentOperationId().trim(),
-                paymentOperationReference(request, customer.getId(), room, selectedServices, total),
-                request.getCardId().trim(), customer.getId(), total);
-
-        Reservation reservation = new Reservation(
-                customer, room, request.getCheckInAt(), request.getCheckOutAt(),
-                request.getGuestCount(), selectedServices, total, payment);
-        reservation.confirm();
-
-        try {
-            reservationRepository.save(reservation);
-        } catch (RuntimeException saveFailure) {
-            try {
-                paymentGateway.refund(
-                        "reservation-compensation:" + request.getPaymentOperationId().trim(),
-                        payment, payment.getAmount());
-            } catch (RuntimeException refundFailure) {
-                saveFailure.addSuppressed(refundFailure);
-            }
-            throw new ReservationException(
-                    "Could not save the reservation; a compensating refund was attempted.", saveFailure);
+        int points = request.getPointsToSpend();
+        if (points < 0) throw new InvalidReservationException("Los puntos no pueden ser negativos.");
+        if (points > 0 && loyalty == null) {
+            throw new InvalidReservationException("El pago con puntos no está habilitado.");
         }
-
-        publish(ReservationEvent.Type.CREATED, reservation);
-        return reservation;
+        if (points > 0 && loyalty.getAvailablePoints(customer.getId()) < points) {
+            throw new InvalidReservationException("Puntos insuficientes para la reserva.");
+        }
+        BigDecimal cardDue = PointsPaymentPolicy.remainder(total, points);
+        // Las reservas solo admiten pago parcial con puntos: siempre queda un cargo real.
+        if (cardDue.signum() <= 0) {
+            throw new InvalidReservationException(
+                    "En reservas debes pagar al menos una parte con tarjeta.");
+        }
+        return new ReservationCalculation(customer, room, selectedServices,
+                new ReservationQuote(subtotal, total, points,
+                        PointsPaymentPolicy.discount(points), cardDue));
     }
 
     @Override
@@ -188,6 +255,18 @@ public final class ReservationApplicationService implements ReservationUseCase,
                     reservation.getPaymentReceipt(), decision.getRefundAmount());
         }
 
+        // Los puntos devueltos siguen la misma proporción de la política de cancelación.
+        // La devolución del hotel es completa; la del huésped respeta el porcentaje.
+        if (reservation.getPointsUsed() > 0 && loyalty != null) {
+            java.math.BigDecimal fraction = decision.getRefundAmount()
+                    .divide(reservation.getTotalPaid(), 10, java.math.RoundingMode.HALF_UP);
+            int restored = java.math.BigDecimal.valueOf(reservation.getPointsUsed())
+                    .multiply(fraction)
+                    .setScale(0, java.math.RoundingMode.DOWN).intValue();
+            if (restored > 0) loyalty.restorePayment(
+                    reservation.getCustomer().getId(), restored,
+                    "CANCELACION-" + reservation.getId());
+        }
         reservation.cancel();
         reservationRepository.save(reservation);
         publish(ReservationEvent.Type.CANCELLED, reservation);
@@ -231,12 +310,12 @@ public final class ReservationApplicationService implements ReservationUseCase,
         return List.copyOf(result);
     }
 
-    private void validateRequest(ReservationRequest request) {
+    private void validateRequest(ReservationRequest request, boolean paymentRequired) {
         if (request == null) throw new InvalidReservationException("Reservation request is required.");
         requireText(request.getCustomerId(), "Customer id");
         requireText(request.getRoomNumber(), "Room number");
         requireText(request.getCardId(), "Card id");
-        requireText(request.getPaymentOperationId(), "Payment operation id");
+        if (paymentRequired) requireText(request.getPaymentOperationId(), "Payment operation id");
         if (request.getGuestCount() < 1) {
             throw new InvalidReservationException("At least one guest is required.");
         }
@@ -259,6 +338,7 @@ public final class ReservationApplicationService implements ReservationUseCase,
         appendReferencePart(reference, request.getPromotionCode() == null
                 ? "" : request.getPromotionCode().trim());
         appendReferencePart(reference, total.stripTrailingZeros().toPlainString());
+        appendReferencePart(reference, Integer.toString(request.getPointsToSpend()));
         for (ServiceOption service : selectedServices) {
             appendReferencePart(reference, service.getId());
         }
