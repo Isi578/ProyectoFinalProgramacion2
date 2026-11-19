@@ -15,10 +15,14 @@ import com.hoteluq.infrastructure.factory.HotelComponentsFactory;
 import com.hoteluq.infrastructure.factory.InMemoryHotelComponentsFactory;
 import com.hoteluq.infrastructure.factory.InMemoryLoyaltyPromotionFactory;
 import com.hoteluq.infrastructure.factory.LoyaltyPromotionComponents;
+import com.hoteluq.presentation.javafx.auth.CustomerAuthView;
 import com.hoteluq.presentation.javafx.reservation.ReservationController;
 import com.hoteluq.presentation.javafx.reservation.ReservationView;
+import com.hoteluq.presentation.javafx.reservation.ReservationAccessGate;
 import javafx.application.Application;
 import javafx.scene.Scene;
+import javafx.scene.control.Tab;
+import javafx.scene.control.TabPane;
 import javafx.stage.Stage;
 
 import java.time.Clock;
@@ -53,10 +57,27 @@ public final class HotelUqApplication1 extends Application {
 
         ReservationFacade facade = new ReservationFacade(service);
         ReservationView view = new ReservationView();
-        new ReservationController(view, facade).initialize();
+        ReservationController reservationController = new ReservationController(view, facade);
+        reservationController.initialize();
 
-        stage.setTitle("HotelUQ - Reservation Management");
-        stage.setScene(new Scene(view.getRoot(), 920, 600));
+        CustomerAuthView authView = new CustomerAuthView();
+        Tab accountTab = new Tab("Cuenta de cliente", authView.getRoot());
+        Tab reservationsTab = new Tab("Reservas", view.getRoot());
+        accountTab.setClosable(false);
+        reservationsTab.setClosable(false);
+        TabPane tabs = new TabPane(accountTab, reservationsTab);
+
+        // Las reservas solo se abren después de iniciar sesión.
+        ReservationAccessGate.connect(
+                tabs,
+                accountTab,
+                reservationsTab,
+                authView,
+                components.getCustomerAccountUseCase(),
+                reservationController);
+
+        stage.setTitle("HotelUQ - Gestión de reservas");
+        stage.setScene(new Scene(tabs, 920, 640));
         stage.show();
     }
 

@@ -7,6 +7,7 @@ import com.hoteluq.application.reporting.HotelReportService;
 import com.hoteluq.presentation.javafx.admin.AdminView;
 import com.hoteluq.presentation.javafx.admin.AdminController;
 
+import com.hoteluq.presentation.javafx.auth.CustomerAuthView;
 import com.hoteluq.reporting.HotelReportQuery;
 
 import com.hoteluq.application.promotion.VoucherUsageObserver;
@@ -27,7 +28,7 @@ import com.hoteluq.infrastructure.factory.HotelComponentsFactory;
 import com.hoteluq.infrastructure.factory.InMemoryHotelComponentsFactory;
 import com.hoteluq.infrastructure.factory.InMemoryLoyaltyPromotionFactory;
 import com.hoteluq.infrastructure.factory.LoyaltyPromotionComponents;
-
+import com.hoteluq.presentation.javafx.reservation.ReservationAccessGate;
 import com.hoteluq.presentation.javafx.reservation.ReservationController;
 import com.hoteluq.presentation.javafx.reservation.ReservationView;
 
@@ -134,10 +135,13 @@ public final class HotelUqApplication extends Application {
         ReservationView view =
                 new ReservationView();
 
-        new ReservationController(
-                view,
-                facade
-        ).initialize();
+        ReservationController reservationController =
+                new ReservationController(
+                        view,
+                        facade
+                );
+
+        reservationController.initialize();
 
         /**
          * Creamos el servicio de reportes.
@@ -207,15 +211,38 @@ public final class HotelUqApplication extends Application {
                         adminView.getRoot()
                 );
 
+        // Construimos la vista de acceso de clientes.
+        CustomerAuthView authView =
+                new CustomerAuthView();
+
+        // Creamos la pestaña de cuenta de cliente.
+        Tab accountTab =
+                new Tab(
+                        "Cuenta de cliente",
+                        authView.getRoot()
+                );
+
+        accountTab.setClosable(false);
         reservationsTab.setClosable(false);
         adminTab.setClosable(false);
 
         // Unimos las pestañas.
         TabPane mainTabs =
                 new TabPane(
+                        accountTab,
                         reservationsTab,
                         adminTab
                 );
+
+        // Bloqueamos las reservas hasta que un cliente inicie sesión.
+        ReservationAccessGate.connect(
+                mainTabs,
+                accountTab,
+                reservationsTab,
+                authView,
+                components.getCustomerAccountUseCase(),
+                reservationController
+        );
 
         /**
          * closeFiscalDay (cerrar día fiscal).
