@@ -14,7 +14,7 @@ import java.nio.file.*;
 import java.time.*;
 import java.util.*;
 
-/** Pruebas ejecutables con, sin interfaz gráfica. */
+/** Pruebas de humo ejecutables con java puro, sin interfaz gráfica. */
 public final class HotelUQIntegrationSmoke {
     static int passed;
     static void check(boolean okay, String message) {
@@ -42,6 +42,10 @@ public final class HotelUQIntegrationSmoke {
         Path fiscals = Files.createTempDirectory("hoteluq-fiscal-integration-");
         DailyFiscalService fiscal = new DailyFiscalService(c.getReservationRepository(),
                 c.getPaymentMovementRepository(), fiscals);
+        // Un hotel vacío no crea archivos fiscales artificiales al arrancar.
+        fiscal.closeYesterdayAutomatically();
+        check(Files.list(fiscals).count() == 0,
+                "Inicio limpio no genera cierres fiscales vacíos");
         var reports = new HotelReportService(c.getReservationRepository(), c.getRoomCatalog(),
                 c.getPaymentMovementRepository(), c.getCustomerCatalog(), l.getLoyaltyService(),
                 res, c.getServicePurchases());
@@ -49,6 +53,10 @@ public final class HotelUQIntegrationSmoke {
                 c.getCustomerCatalog(), res, c.getCardRechargeUseCase(),
                 l.getServiceAdministration(), l.getPromotionService());
         check(c.getCustomerCatalog().findAll().isEmpty(), "No se precargan usuarios antiguos");
+        check(c.getRoomCatalog().findActiveRooms().isEmpty(), "No hay habitaciones iniciales");
+        check(c.getServiceCatalog().findAll().isEmpty(), "No hay servicios iniciales");
+        check(l.getLoyaltyService().listBenefits().isEmpty(), "No hay beneficios iniciales");
+        check(c.getPaymentMovementRepository().findAll().isEmpty(), "No existen movimientos automáticos");
         check(l.getLoyaltyService().getAvailablePoints("GUEST-ANA-001") == 0,
                 "No quedan puntos antiguos precargados");
         fails(() -> admin.authenticate("admin", "malaclave"), "Administrador rechaza contraseña incorrecta");
@@ -63,6 +71,17 @@ public final class HotelUQIntegrationSmoke {
         String summary = loader.load();
         check(summary.contains("20 clientes"), "CSV de demostración cargado desde raíz");
         check(c.getCustomerCatalog().findAll().size() == 20, "Exactamente 20 clientes de prueba");
+        check(c.getRoomCatalog().findActiveRooms().size() == 10, "Exactamente diez habitaciones desde CSV");
+        check(c.getServiceCatalog().findAll().size() == 6, "Cinco servicios y un paquete desde CSV");
+        check(l.getLoyaltyService().listBenefits().size() == 3, "Tres beneficios desde CSV");
+        check(c.getCustomerCatalog().findAll().stream().allMatch(customer ->
+                        c.getCustomerVirtualCardUseCase().findCardsForCustomer(customer.getId()).size() == 1
+                                && c.getCustomerVirtualCardUseCase().findCardsForCustomer(customer.getId())
+                                .get(0).getCardId().equals(customer.getId())),
+                "Las tarjetas comparten identificador con cada cliente");
+        check(c.getCustomerCatalog().findById("C-01").isPresent()
+                        && c.getCustomerCatalog().findById("C-20").isPresent(),
+                "Identificadores consecutivos del C-01 al C-20");
         check(c.getReservationRepository().findAll().size() == 20, "Exactamente 20 reservas de prueba");
         check(c.getServicePurchases().findAll().size() == 10, "Exactamente 10 compras independientes");
         check(c.getReservationRepository().findAll().stream().filter(r -> !r.getServices().isEmpty()).count() == 10,
@@ -101,6 +120,23 @@ public final class HotelUQIntegrationSmoke {
         }, "El botón no duplica la precarga de la misma sesión");
         var fresh = c.getCustomerAccountUseCase().register("Cliente Nuevas Pruebas", "nuevo@demo.local", "cliente123");
         var freshCard = c.getCustomerVirtualCardUseCase().findCardsForCustomer(fresh.getId()).get(0);
+        check(fresh.getId().equals("C-21") && freshCard.getCardId().equals("C-21"),
+                "El cliente manual obtiene el siguiente ID y la misma tarjeta");
+        check(c.getCustomerVirtualCardUseCase().issueForCustomer(fresh.getId()).getCardId()
+                        .equals("C-21") && c.getCustomerVirtualCardUseCase()
+                        .findCardsForCustomer(fresh.getId()).size() == 1,
+                "Emitir de nuevo no duplica tarjetas");
+        check(admin.available("admin", "301", LocalDate.now().plusDays(90).atTime(15,0),
+                        LocalDate.now().plusDays(92).atTime(11,0)),
+                "Consulta administrativa de disponibilidad en fechas futuras");
+        admin.saveRoom("admin", "999", "SUITE", new BigDecimal("340000"), 3, false);
+        check(c.getRoomCatalog().findActiveRoom("999").isPresent(),
+                "Administrador puede crear habitación desde el panel");
+        fails(() -> admin.saveRoom("admin", "999", "SUITE", new BigDecimal("340000"), 3, false),
+                "No sobrescribe habitaciones repetidas");
+        admin.deactivateRoom("admin", "999");
+        check(c.getRoomCatalog().findActiveRoom("999").isEmpty(),
+                "Habitación desactivada deja de ofrecerse");
         c.getCardRechargeUseCase().recharge("admin", freshCard.getCardId(), new BigDecimal("1000000"));
         var purch = new CustomerServicePurchaseService(c.getServiceCatalog(), c.getPaymentGateway(),
                 c.getCustomerVirtualCardUseCase(), l.getLoyaltyService(), c.getServicePurchases());
@@ -138,7 +174,7 @@ public final class HotelUQIntegrationSmoke {
         LocalDateTime checkIn = LocalDate.now().plusDays(90).atTime(15, 0);
         LocalDateTime checkOut = checkIn.plusDays(2).withHour(11);
         ReservationRequest request = ReservationRequest.builder()
-                .customerId(fresh.getId()).roomNumber("101")
+                .customerId(fresh.getId()).roomNumber("301")
                 .checkInAt(checkIn).checkOutAt(checkOut).guestCount(1)
                 .serviceIds(List.of("SPA", "PARKING"))
                 .cardId(freshCard.getCardId()).pointsToSpend(300)
@@ -153,11 +189,13 @@ public final class HotelUQIntegrationSmoke {
                         && booked.getPointsUsed() == 300,
                 "Crear reserva con puntos cobra solo el resto y guarda puntos gastados");
         fails(() -> res.createReservation(ReservationRequest.builder()
-                        .customerId(fresh.getId()).roomNumber("101")
+                        .customerId(fresh.getId()).roomNumber("301")
                         .checkInAt(checkIn).checkOutAt(checkOut).guestCount(1)
                         .serviceIds(List.of()).cardId(freshCard.getCardId())
                         .paymentOperationId(UUID.randomUUID().toString()).build()),
                 "Bloquea reserva solapada para una misma habitación");
+        check(!admin.available("admin", "301", checkIn, checkOut),
+                "La disponibilidad administrativa respeta las fechas ocupadas");
         var cancel = res.cancelByHotel(booked.getId(), LocalDateTime.now());
         check(cancel.getRefundAmount().compareTo(booked.getTotalPaid()) == 0,
                 "Cancelación hotelera devuelve todo lo pagado en tarjeta");
@@ -167,6 +205,11 @@ public final class HotelUQIntegrationSmoke {
         fails(() -> purch.purchaseServices(fresh.getId(), badCard.getCardId(),
                         List.of("SPA"),1,1,0),
                 "No permite utilizar tarjeta perteneciente a otro cliente");
+        admin.addPackage("admin", "OFERTA-PRUEBA", "Oferta spa + estacionamiento", "SPA,PARKING");
+        check(c.getServiceCatalog().findById("OFERTA-PRUEBA").isPresent(),
+                "Administración permite crear paquetes con servicios existentes");
+        fails(() -> admin.addPackage("admin", "PAQUETE-ERROR", "Paquete incorrecto", "DESCONOCIDO"),
+                "No permite paquetes con servicios desconocidos");
         check(c.getServiceCatalog().findById("AGUA").isPresent()
                         && c.getServiceCatalog().findById("KIT_ASEO").isPresent(),
                 "Productos de consumo aparecen en el catálogo comprable");
@@ -188,7 +231,7 @@ public final class HotelUQIntegrationSmoke {
                 "Compra rechazada no pierde puntos");
         LocalDateTime nextArrival = LocalDateTime.now().plusHours(50);
         var partial = ReservationRequest.builder().customerId(fresh.getId())
-                .roomNumber("102").checkInAt(nextArrival)
+                .roomNumber("302").checkInAt(nextArrival)
                 .checkOutAt(nextArrival.plusDays(1)).guestCount(1)
                 .cardId(freshCard.getCardId()).serviceIds(List.of())
                 .pointsToSpend(100)

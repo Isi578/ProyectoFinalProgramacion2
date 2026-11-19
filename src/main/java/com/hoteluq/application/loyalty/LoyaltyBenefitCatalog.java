@@ -30,6 +30,14 @@ public final class LoyaltyBenefitCatalog {
                         BenefitType.SERVICE_PACKAGE, 2000, new BigDecimal("100000"))));
     }
 
+    /** Registra beneficios leídos del archivo opcional de demostración. */
+    public synchronized void add(LoyaltyBenefit benefit) {
+        if (benefits.containsKey(benefit.id())) {
+            throw new IllegalArgumentException("El beneficio ya existe: " + benefit.id());
+        }
+        benefits.put(benefit.id(), benefit);
+    }
+
     public Optional<LoyaltyBenefit> findById(String benefitId) {
         return Optional.ofNullable(benefits.get(benefitId));
     }

@@ -1,6 +1,8 @@
 package com.hoteluq.application.demo;
 
 import com.hoteluq.application.loyalty.LoyaltyService;
+import com.hoteluq.domain.loyalty.BenefitType;
+import com.hoteluq.domain.loyalty.LoyaltyBenefit;
 import com.hoteluq.application.port.ServiceStore;
 import com.hoteluq.application.reporting.DailyFiscalService;
 import com.hoteluq.domain.model.*;
@@ -63,6 +65,9 @@ public final class DemoDataLoader {
             String[] data = line.split(";", -1);
             int expected = switch (data[0]) {
                 case "HABITACION" -> 5;
+                case "SERVICIO" -> 5;
+                case "PAQUETE" -> 4;
+                case "BENEFICIO" -> 6;
                 case "CLIENTE" -> 4;
                 case "RESERVA" -> 7;
                 case "COMPRA" -> 6;
@@ -78,7 +83,19 @@ public final class DemoDataLoader {
         long nPurchases = commands.stream().filter(a -> a[0].equals("COMPRA")).count();
         if (nClients != 20 || nReservations != 20 || nPurchases != 10) {
             throw new IllegalArgumentException(
-                    "El archivo debe tener una lista de 20 clientes, 20 reservas y 10 compras independientes.");
+                    "El archivo debe definir 20 clientes, 20 reservas y 10 compras independientes.");
+        }
+        long nRooms = commands.stream().filter(a -> a[0].equals("HABITACION")).count();
+        long nServices = commands.stream().filter(a -> a[0].equals("SERVICIO")).count();
+        long nPackages = commands.stream().filter(a -> a[0].equals("PAQUETE")).count();
+        if (nRooms != 10 || nServices != 5 || nPackages != 1) {
+            throw new IllegalArgumentException("El CSV debe contener 10 habitaciones, 5 servicios y un paquete.");
+        }
+        if (!hotel.getCustomerCatalog().findAll().isEmpty()
+                || !hotel.getRoomCatalog().findActiveRooms().isEmpty()
+                || !hotel.getServiceCatalog().findAll().isEmpty()
+                || !hotel.getReservationRepository().findAll().isEmpty()) {
+            throw new IllegalStateException("Para precargar, utiliza una ejecución limpia del hotel.");
         }
         attempted = true;
         List<Customer> customers = new ArrayList<>();
@@ -87,7 +104,37 @@ public final class DemoDataLoader {
         int roomCount = 0;
         int reservationServices = 0;
 
-        // Primera etapa: habitaciones y clientes de prueba (10 millones por tarjeta).
+        // Primera etapa: crear servicios, paquetes y beneficios desde este archivo.
+        // Nunca se crean automáticamente al iniciar la aplicación.
+        ServiceStore catalog = (ServiceStore) hotel.getServiceCatalog();
+        int serviceCount = 0;
+        int benefitCount = 0;
+        for (String[] row : commands) {
+            if (row[0].equals("SERVICIO")) {
+                catalog.save(new AdditionalService(row[1], row[2], new BigDecimal(row[3]),
+                        ServicePricingUnit.valueOf(row[4]), true));
+                serviceCount++;
+            }
+        }
+        for (String[] row : commands) {
+            if (row[0].equals("PAQUETE")) {
+                ServicePackage.Builder packageBuilder = ServicePackage.builder()
+                        .id(row[1]).name(row[2]);
+                for (String component : row[3].split(",")) {
+                    packageBuilder.add(catalog.findById(component.trim()).orElseThrow(
+                            () -> new IllegalArgumentException("Servicio desconocido: " + component)));
+                }
+                catalog.save(packageBuilder.build());
+            }
+            if (row[0].equals("BENEFICIO")) {
+                loyalty.addDemonstrationBenefit(new LoyaltyBenefit(row[1], row[2],
+                        BenefitType.valueOf(row[3]), Integer.parseInt(row[4]),
+                        new BigDecimal(row[5])));
+                benefitCount++;
+            }
+        }
+
+        // Segunda etapa: habitaciones y clientes de prueba (10 millones por tarjeta).
         for (String[] row : commands) {
             if (row[0].equals("HABITACION")) {
                 String type = row[2];
@@ -179,7 +226,8 @@ public final class DemoDataLoader {
         int archived = fiscal.archiveDemonstrationDays(new ArrayList<>(fiscalDays));
         return "Precarga exitosa desde " + file.getFileName()
                 + ": " + customers.size() + " clientes (10.000.000 COP cada uno), "
-                + roomCount + " habitaciones nuevas, 20 reservas, "
+                + roomCount + " habitaciones, " + serviceCount + " servicios, "
+                + benefitCount + " beneficios, 20 reservas, "
                 + reservationServices + " servicios incluidos en reservas, 10 compras independientes. "
                 + archived + " cierres fiscales históricos nuevos. "
                 + "Consultar informes entre "

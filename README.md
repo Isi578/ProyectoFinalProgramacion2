@@ -1,45 +1,52 @@
-# HotelUQ
+# HotelUQ — Entrega de Programación II
 
-HotelUQ is a JavaFX hotel-management project for Programming II. This branch contains the reservation vertical slice and integration contracts for the remaining hotel modules.
+Aplicación de administración hotelera en Java y JavaFX. Las vistas, los servicios y los repositorios se conectan desde `HotelUqApplication`.
 
-## Requirements
+## Requisitos para ejecutarla
 
-- JDK 25 or newer
-- Maven 3.8.5 or newer
-- IntelliJ IDEA with the project opened as a Maven project
+- JDK 25
+- Maven 3.8.5 o superior
+- JavaFX 27.0.1 (Maven descarga las dependencias declaradas en `pom.xml`)
 
-JavaFX is resolved by Maven; no separate JavaFX SDK installation is needed.
 
-## Run
+```bash
+mvn clean test
+mvn javafx:run
+```
 
-From the project folder, run: mvn clean javafx:run
+## Inicio limpio (sin información)
 
-In IntelliJ, open pom.xml as a Maven project, select a JDK 25 project SDK, reload Maven, then run the javafx:run Maven goal.
+La aplicación arranca **sin clientes, tarjetas, habitaciones, reservas, servicios, productos, paquetes, promociones ni beneficios precargados**. Cada registro puede crearse desde la aplicación cuando corresponde. La primera tarjeta del cliente utiliza el mismo identificador que su cuenta (`C-01`, `C-02`...). No se crean tarjetas duplicadas para el mismo cliente.
 
-## Reservation demo data
+La pestaña **Administración** tiene como credenciales: `admin` / `hoteluq123`. Son datos para poder usar en la explicación. La sesión administrativa se cierra cuando se abandona la pestaña principal de Administración.
 
-The application starts with sample rooms, a guest, a virtual card, and additional services. The screen lets you check room availability, create a reservation, cancel it, and inspect the event history.
+Los datos de clientes, tarjetas, reservas y demás registros usan repositorios **en memoria** y se pierden al reiniciar. Los cierres fiscales son archivos TXT almacenados en `~/.hoteluq/fiscales/`.
 
-Demo guest ID: GUEST-ANA-001
-Demo card ID: CARD-ANA-001
+## Precarga opcional para la exposición
 
-Customer credentials, card balances, payment movements, reservations, and other demo data use in-memory repositories and are lost when the application restarts. The configured administrator ID is a demonstration allowlist, not secure user authentication.
+Inicia el programa con los catálogos vacíos, entra a Administración y pulsa **Cargar demostración desde archivo**. El botón lee `datos-demostracion.csv` de la raíz del proyecto y crea:
 
-## Customer account (login and registration)
+- 20 clientes y una tarjeta por cada uno (`C-01` a `C-20`).
+- Recargas de 10 millones de pesos por tarjeta.
+- 10 habitaciones.
+- 5 servicios individuales, un paquete y tres beneficios de puntos.
+- 20 reservas, diez de ellas con servicios adicionales.
+- 10 compras de servicios independientes de una reserva.
+- Movimientos distribuidos en días distintos para los informes y cierres fiscales históricos.
 
-The first tab, "Cuenta de cliente", lets a customer sign in or create an account. It uses `CustomerAccountUseCase` (PBKDF2 password hashing, unique email).
+Cliente de ejemplo: `cliente01@hoteluq.demo` / `cliente123`.
 
-The Reservations tab is locked until a customer signs in, and locks again on sign-out. Reservations are always made, listed and cancelled on behalf of the signed-in customer: a customer cannot cancel another customer's reservation or see their activity events. The access rule lives in `ReservationAccessGate` and is shared by `HotelUqApplication` and `HotelUqApplication1`.
+La precarga puede realizarse solo una vez por sesión, desde una ejecución limpia. Si se añaden registros manualmente antes de pulsar el botón, la precarga se bloquea ya que es necesario comenzar con el hotel vacío, para no mezclar dos conjuntos de datos.
 
-The reservation screen is in Spanish. Messages coming from the application and domain layers are translated in `ReservationMessages`; a message that is not in its list is shown as received.
+## Funciones principales
 
-Demo customer: ana@example.com (card CARD-ANA-001). Customers created from the registration form do not have a virtual card yet, so paying a reservation requires a card owned by that customer.
+- Registro y autenticación de clientes, tarjeta virtual con saldo y movimientos.
+- Reserva de habitaciones con cotización, pagos en tarjeta y uso opcional de puntos.
+- Compras múltiples sin reserva, incluidas compras con puntos.
+- Administración mediante tablas de clientes, tarjetas, habitaciones, reservas, servicios, paquetes y promociones.
+- Estadísticas, informes operativos, exportaciones y cierres fiscales.
 
-## Architecture
 
-- domain: hotel entities, reservation lifecycle and pricing
-- application: reservation use cases and contracts for other modules
-- infrastructure: in-memory repositories and virtual-card adapter
-- presentation.javafx: JavaFX MVC view and controller
+### Alcance de las pruebas
 
-See docs/requirements-analysis.md and docs/architecture-patterns.md for requirement mapping, proposed group rules, SOLID evidence, and design patterns.
+Se compiló con Java 21 y JavaFX. 
