@@ -1,6 +1,7 @@
 package com.hoteluq.infrastructure.factory;
 
 import com.hoteluq.application.contract.CustomerAccountUseCase;
+import com.hoteluq.application.contract.CustomerVirtualCardUseCase;
 import com.hoteluq.application.contract.CardRechargeUseCase;
 import com.hoteluq.application.port.CustomerCatalog;
 import com.hoteluq.application.port.PaymentGateway;
@@ -15,6 +16,7 @@ public final class HotelComponents {
     private final ServiceCatalog serviceCatalog;
     private final CustomerCatalog customerCatalog;
     private final CustomerAccountUseCase customerAccountUseCase;
+    private final CustomerVirtualCardUseCase customerVirtualCardUseCase;
     private final PaymentGateway paymentGateway;
     private final CardRechargeUseCase cardRechargeUseCase;
     private final PaymentMovementRepository paymentMovementRepository;
@@ -24,6 +26,7 @@ public final class HotelComponents {
                            ServiceCatalog serviceCatalog,
                            CustomerCatalog customerCatalog,
                            CustomerAccountUseCase customerAccountUseCase,
+                           CustomerVirtualCardUseCase customerVirtualCardUseCase,
                            PaymentGateway paymentGateway,
                            CardRechargeUseCase cardRechargeUseCase,
                            PaymentMovementRepository paymentMovementRepository) {
@@ -32,6 +35,7 @@ public final class HotelComponents {
         this.serviceCatalog = serviceCatalog;
         this.customerCatalog = customerCatalog;
         this.customerAccountUseCase = customerAccountUseCase;
+        this.customerVirtualCardUseCase = customerVirtualCardUseCase;
         this.paymentGateway = paymentGateway;
         this.cardRechargeUseCase = cardRechargeUseCase;
         this.paymentMovementRepository = paymentMovementRepository;
@@ -42,6 +46,7 @@ public final class HotelComponents {
     public ServiceCatalog getServiceCatalog() { return serviceCatalog; }
     public CustomerCatalog getCustomerCatalog() { return customerCatalog; }
     public CustomerAccountUseCase getCustomerAccountUseCase() { return customerAccountUseCase; }
+    public CustomerVirtualCardUseCase getCustomerVirtualCardUseCase() { return customerVirtualCardUseCase; }
     public PaymentGateway getPaymentGateway() { return paymentGateway; }
     public CardRechargeUseCase getCardRechargeUseCase() { return cardRechargeUseCase; }
     public PaymentMovementRepository getPaymentMovementRepository() { return paymentMovementRepository; }

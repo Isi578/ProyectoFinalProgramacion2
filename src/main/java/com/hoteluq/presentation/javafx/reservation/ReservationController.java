@@ -3,6 +3,8 @@ package com.hoteluq.presentation.javafx.reservation;
 import com.hoteluq.application.reservation.CancellationResult;
 import com.hoteluq.application.reservation.ReservationRequest;
 import com.hoteluq.application.reservation.ReservationUseCase;
+import com.hoteluq.application.port.ServiceCatalog;
+import com.hoteluq.application.contract.CustomerVirtualCardUseCase;
 import com.hoteluq.domain.model.Customer;
 import com.hoteluq.domain.model.Reservation;
 import com.hoteluq.domain.model.Room;
@@ -10,7 +12,6 @@ import com.hoteluq.domain.model.Room;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -38,6 +39,11 @@ public final class ReservationController {
     // Contrato de reservas.
     private final ReservationUseCase reservationUseCase;
 
+    // Catálogo compartido: la pantalla muestra los servicios activos actuales.
+    private final ServiceCatalog serviceCatalog;
+
+    private final CustomerVirtualCardUseCase customerCards;
+
     // ID del cliente con sesión iniciada (null si no hay).
     private String sessionCustomerId;
 
@@ -48,10 +54,14 @@ public final class ReservationController {
      */
     public ReservationController(
             ReservationView view,
-            ReservationUseCase reservationUseCase) {
+            ReservationUseCase reservationUseCase,
+            ServiceCatalog serviceCatalog,
+            CustomerVirtualCardUseCase customerCards) {
 
         this.view = view;
         this.reservationUseCase = reservationUseCase;
+        this.serviceCatalog = serviceCatalog;
+        this.customerCards = customerCards;
     }
 
     /**
@@ -61,6 +71,26 @@ public final class ReservationController {
      * las reservas bloqueadas hasta iniciar sesión.
      */
     public void initialize() {
+
+        refreshServiceCatalog();
+
+        view.getCheckInDate().valueProperty().addListener(
+                (observable, oldValue, newValue) -> {
+                    refreshServicePrices();
+                    view.clearAvailableRooms();
+                });
+
+        view.getCheckOutDate().valueProperty().addListener(
+                (observable, oldValue, newValue) -> {
+                    refreshServicePrices();
+                    view.clearAvailableRooms();
+                });
+
+        view.getGuestCount().valueProperty().addListener(
+                (observable, oldValue, newValue) -> {
+                    refreshServicePrices();
+                    view.clearAvailableRooms();
+                });
 
         view.getAvailabilityButton()
                 .setOnAction(event -> checkAvailability());
@@ -92,13 +122,16 @@ public final class ReservationController {
 
         view.showSession(customer.getFullName(), customer.getId());
 
+        view.setCards(customerCards.findCardsForCustomer(customer.getId()));
+
         view.setActionsDisabled(false);
 
+        refreshServiceCatalog();
+
         show("Bienvenido(a), " + customer.getFullName() + "."
-                + LINE + "Tarjeta de demostración: CARD-ANA-001"
-                + " (solo para el cliente demo)."
-                + LINE + "Servicios disponibles: "
-                + "BREAKFAST, PARKING, SPA, WELLNESS");
+                + LINE + "Selecciona una tarjeta virtual propia para pagar."
+                + LINE + "Servicios opcionales: "
+                + view.getAvailableServiceNames());
     }
 
     /**
@@ -128,6 +161,8 @@ public final class ReservationController {
 
         try {
 
+            refreshServiceCatalog();
+
             LocalDateTime checkIn = checkInAt();
 
             LocalDateTime checkOut = checkOutAt();
@@ -137,6 +172,8 @@ public final class ReservationController {
                     checkOut,
                     view.getGuestCount().getValue()
             );
+
+            view.setAvailableRooms(rooms);
 
             if (rooms.isEmpty()) {
 
@@ -169,6 +206,9 @@ public final class ReservationController {
 
         try {
 
+            // Relee el catálogo por si administración lo cambió durante la sesión.
+            refreshServiceCatalog();
+
             ReservationRequest request = buildReservationRequest(null);
 
             if (pendingReservationRequest == null
@@ -190,8 +230,7 @@ public final class ReservationController {
                     + LINE
                     + ReservationMessages.describeReservation(reservation)
                     + LINE
-                    + "Para probar una promoción, debe estar "
-                    + "configurado el módulo de promociones.");
+                    + "Los servicios seleccionados se incluyeron en el cobro.");
 
         } catch (RuntimeException exception) {
 
@@ -202,15 +241,20 @@ public final class ReservationController {
     private ReservationRequest buildReservationRequest(
             String paymentOperationId) {
 
+        if (view.getSelectedRoomNumber().isBlank()) {
+            throw new IllegalArgumentException(
+                    "Consulta disponibilidad y selecciona una habitación primero.");
+        }
+
         // El cliente siempre es el de la sesión, no el del campo de texto.
         ReservationRequest.Builder builder = ReservationRequest.builder()
                 .customerId(sessionCustomerId)
-                .roomNumber(view.getRoomNumber().getText())
+                .roomNumber(view.getSelectedRoomNumber())
                 .checkInAt(checkInAt())
                 .checkOutAt(checkOutAt())
                 .guestCount(view.getGuestCount().getValue())
-                .serviceIds(parseServiceIds(view.getServiceIds().getText()))
-                .cardId(view.getCardId().getText())
+                .serviceIds(view.getSelectedServiceIds())
+                .cardId(view.getSelectedCardId())
                 .promotionCode(view.getPromotionCode().getText());
 
         if (paymentOperationId != null) {
@@ -373,17 +417,26 @@ public final class ReservationController {
         }
     }
 
-    private static List<String> parseServiceIds(String value) {
+    private void refreshServiceCatalog() {
+        long nights = selectedNights();
+        int guests = view.getGuestCount().getValue();
+        view.setAvailableServices(serviceCatalog.findAll(), nights, guests);
+    }
 
-        if (value == null || value.isBlank()) {
+    private void refreshServicePrices() {
+        view.refreshServicePrices(selectedNights(), view.getGuestCount().getValue());
+    }
 
-            return List.of();
+    private long selectedNights() {
+        if (view.getCheckInDate().getValue() == null
+                || view.getCheckOutDate().getValue() == null) {
+            return 1;
         }
 
-        return Arrays.stream(value.split(","))
-                .map(String::trim)
-                .filter(part -> !part.isEmpty())
-                .toList();
+        long nights = java.time.temporal.ChronoUnit.DAYS.between(
+                view.getCheckInDate().getValue(),
+                view.getCheckOutDate().getValue());
+        return Math.max(1, nights);
     }
 
     /**

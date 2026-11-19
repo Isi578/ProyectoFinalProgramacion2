@@ -9,6 +9,7 @@ import com.hoteluq.application.reservation.ReservationEventPublisher;
 import com.hoteluq.application.reservation.ReservationFacade;
 import com.hoteluq.application.reservation.ReservationUseCase;
 import com.hoteluq.application.reservation.StandardCancellationPolicy;
+import com.hoteluq.application.service.CustomerServicePurchaseService;
 import com.hoteluq.domain.pricing.AccommodationPricingService;
 import com.hoteluq.infrastructure.factory.HotelComponents;
 import com.hoteluq.infrastructure.factory.HotelComponentsFactory;
@@ -16,6 +17,12 @@ import com.hoteluq.infrastructure.factory.InMemoryHotelComponentsFactory;
 import com.hoteluq.infrastructure.factory.InMemoryLoyaltyPromotionFactory;
 import com.hoteluq.infrastructure.factory.LoyaltyPromotionComponents;
 import com.hoteluq.presentation.javafx.auth.CustomerAuthView;
+import com.hoteluq.presentation.javafx.card.CustomerCardController;
+import com.hoteluq.presentation.javafx.card.CustomerCardView;
+import com.hoteluq.presentation.javafx.loyalty.CustomerPointsController;
+import com.hoteluq.presentation.javafx.loyalty.CustomerPointsView;
+import com.hoteluq.presentation.javafx.purchase.CustomerPurchaseController;
+import com.hoteluq.presentation.javafx.purchase.CustomerPurchaseView;
 import com.hoteluq.presentation.javafx.reservation.ReservationController;
 import com.hoteluq.presentation.javafx.reservation.ReservationView;
 import com.hoteluq.presentation.javafx.reservation.ReservationAccessGate;
@@ -57,15 +64,39 @@ public final class HotelUqApplication1 extends Application {
 
         ReservationFacade facade = new ReservationFacade(service);
         ReservationView view = new ReservationView();
-        ReservationController reservationController = new ReservationController(view, facade);
+        ReservationController reservationController = new ReservationController(
+                view, facade, components.getServiceCatalog(),
+                components.getCustomerVirtualCardUseCase());
         reservationController.initialize();
 
         CustomerAuthView authView = new CustomerAuthView();
+        CustomerCardView cardView = new CustomerCardView();
+        CustomerCardController cardController = new CustomerCardController(
+                cardView, components.getCustomerVirtualCardUseCase());
+        cardController.initialize();
         Tab accountTab = new Tab("Cuenta de cliente", authView.getRoot());
         Tab reservationsTab = new Tab("Reservas", view.getRoot());
+        Tab cardTab = new Tab("Tarjeta virtual", cardView.getRoot());
+        CustomerPointsView pointsView = new CustomerPointsView();
+        CustomerPointsController pointsController = new CustomerPointsController(
+                pointsView, loyaltyPromotion.getLoyaltyService());
+        pointsController.initialize();
+        Tab pointsTab = new Tab("Puntos y beneficios", pointsView.getRoot());
+        CustomerPurchaseView purchaseView = new CustomerPurchaseView();
+        CustomerPurchaseController purchaseController = new CustomerPurchaseController(
+                purchaseView,
+                components.getServiceCatalog(),
+                components.getCustomerVirtualCardUseCase(),
+                new CustomerServicePurchaseService(
+                        components.getServiceCatalog(), components.getPaymentGateway()));
+        purchaseController.initialize();
+        Tab purchaseTab = new Tab("Compras", purchaseView.getRoot());
         accountTab.setClosable(false);
         reservationsTab.setClosable(false);
-        TabPane tabs = new TabPane(accountTab, reservationsTab);
+        cardTab.setClosable(false);
+        pointsTab.setClosable(false);
+        purchaseTab.setClosable(false);
+        TabPane tabs = new TabPane(accountTab, reservationsTab, cardTab, pointsTab, purchaseTab);
 
         // Las reservas solo se abren después de iniciar sesión.
         ReservationAccessGate.connect(
@@ -74,7 +105,13 @@ public final class HotelUqApplication1 extends Application {
                 reservationsTab,
                 authView,
                 components.getCustomerAccountUseCase(),
-                reservationController);
+                reservationController,
+                cardTab,
+                cardController,
+                pointsTab,
+                pointsController,
+                purchaseTab,
+                purchaseController);
 
         stage.setTitle("HotelUQ - Gestión de reservas");
         stage.setScene(new Scene(tabs, 920, 640));

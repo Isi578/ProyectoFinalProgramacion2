@@ -1,6 +1,7 @@
 package com.hoteluq.application.payment;
 
 import com.hoteluq.application.contract.CardRechargeUseCase;
+import com.hoteluq.application.contract.CustomerVirtualCardUseCase;
 import com.hoteluq.application.port.PaymentGateway;
 import com.hoteluq.application.port.PaymentMovementRepository;
 import com.hoteluq.application.port.VirtualCardRepository;
@@ -12,12 +13,16 @@ import com.hoteluq.domain.model.VirtualCard;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-public final class PaymentService implements CardRechargeUseCase, PaymentGateway {
+public final class PaymentService implements CardRechargeUseCase, PaymentGateway,
+        CustomerVirtualCardUseCase {
+    private static final SecureRandom CARD_ID_RANDOM = new SecureRandom();
     private final PaymentGateway paymentGateway;
     private final VirtualCardRepository cardRepository;
     private final PaymentMovementRepository movementRepository;
@@ -105,6 +110,51 @@ public final class PaymentService implements CardRechargeUseCase, PaymentGateway
 
     public BigDecimal getBalance(String cardId) {
         return findCard(cardId).getBalance();
+    }
+
+    @Override
+    public synchronized VirtualCard issueForCustomer(String customerId) {
+        String ownerId = requiredText(customerId, "Customer id");
+        VirtualCard card = new VirtualCard(
+                newCardId(),
+                ownerId,
+                BigDecimal.ZERO.setScale(2),
+                true,
+                LocalDateTime.now());
+        return cardRepository.save(card);
+    }
+
+    private String newCardId() {
+        byte[] randomBytes = new byte[6];
+        String cardId;
+        do {
+            CARD_ID_RANDOM.nextBytes(randomBytes);
+            cardId = "CARD-" + Base64.getUrlEncoder().withoutPadding()
+                    .encodeToString(randomBytes).toUpperCase();
+        } while (cardRepository.findById(cardId).isPresent());
+        return cardId;
+    }
+
+    @Override
+    public List<VirtualCard> findCardsForCustomer(String customerId) {
+        String ownerId = requiredText(customerId, "Customer id");
+        return cardRepository.findByCustomerId(ownerId).stream()
+                .sorted((left, right) -> left.getCardId().compareTo(right.getCardId()))
+                .toList();
+    }
+
+    @Override
+    public BigDecimal getCustomerCardBalance(String customerId, String cardId) {
+        return requireCustomerCard(customerId, cardId).getBalance();
+    }
+
+    @Override
+    public List<PaymentMovement> getCustomerCardMovements(String customerId, String cardId) {
+        VirtualCard card = requireCustomerCard(customerId, cardId);
+        return movementRepository.findByCardId(card.getCardId()).stream()
+                .filter(movement -> movement.getStatus() == PaymentMovementStatus.COMPLETED)
+                .sorted((left, right) -> right.getOccurredAt().compareTo(left.getOccurredAt()))
+                .toList();
     }
 
     @Override
@@ -365,6 +415,15 @@ public final class PaymentService implements CardRechargeUseCase, PaymentGateway
         requireText(cardId, "Card id");
         return cardRepository.findById(cardId.trim())
                 .orElseThrow(() -> new PaymentDeclinedException("Virtual card was not found."));
+    }
+
+    private VirtualCard requireCustomerCard(String customerId, String cardId) {
+        String ownerId = requiredText(customerId, "Customer id");
+        VirtualCard card = findCard(cardId);
+        if (!card.getCustomerId().equals(ownerId)) {
+            throw new PaymentDeclinedException("Virtual card does not belong to this customer.");
+        }
+        return card;
     }
 
     private static void validatePositiveAmount(BigDecimal amount) {

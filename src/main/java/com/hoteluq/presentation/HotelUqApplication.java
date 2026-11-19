@@ -3,11 +3,18 @@ package com.hoteluq.presentation;
 import com.hoteluq.application.admin.AdminDashboardService;
 import com.hoteluq.application.reporting.DailyFiscalService;
 import com.hoteluq.application.reporting.HotelReportService;
+import com.hoteluq.application.service.CustomerServicePurchaseService;
 
 import com.hoteluq.presentation.javafx.admin.AdminView;
 import com.hoteluq.presentation.javafx.admin.AdminController;
 
 import com.hoteluq.presentation.javafx.auth.CustomerAuthView;
+import com.hoteluq.presentation.javafx.card.CustomerCardController;
+import com.hoteluq.presentation.javafx.card.CustomerCardView;
+import com.hoteluq.presentation.javafx.loyalty.CustomerPointsController;
+import com.hoteluq.presentation.javafx.loyalty.CustomerPointsView;
+import com.hoteluq.presentation.javafx.purchase.CustomerPurchaseController;
+import com.hoteluq.presentation.javafx.purchase.CustomerPurchaseView;
 import com.hoteluq.reporting.HotelReportQuery;
 
 import com.hoteluq.application.promotion.VoucherUsageObserver;
@@ -138,7 +145,9 @@ public final class HotelUqApplication extends Application {
         ReservationController reservationController =
                 new ReservationController(
                         view,
-                        facade
+                        facade,
+                        components.getServiceCatalog(),
+                        components.getCustomerVirtualCardUseCase()
                 );
 
         reservationController.initialize();
@@ -204,6 +213,28 @@ public final class HotelUqApplication extends Application {
                         view.getRoot()
                 );
 
+        CustomerCardView cardView = new CustomerCardView();
+        CustomerCardController cardController = new CustomerCardController(
+                cardView, components.getCustomerVirtualCardUseCase());
+        cardController.initialize();
+        Tab cardTab = new Tab("Tarjeta virtual", cardView.getRoot());
+
+        CustomerPointsView pointsView = new CustomerPointsView();
+        CustomerPointsController pointsController = new CustomerPointsController(
+                pointsView, loyaltyPromotion.getLoyaltyService());
+        pointsController.initialize();
+        Tab pointsTab = new Tab("Puntos y beneficios", pointsView.getRoot());
+
+        CustomerPurchaseView purchaseView = new CustomerPurchaseView();
+        CustomerPurchaseController purchaseController = new CustomerPurchaseController(
+                purchaseView,
+                components.getServiceCatalog(),
+                components.getCustomerVirtualCardUseCase(),
+                new CustomerServicePurchaseService(
+                        components.getServiceCatalog(), components.getPaymentGateway()));
+        purchaseController.initialize();
+        Tab purchaseTab = new Tab("Compras", purchaseView.getRoot());
+
         // Creamos la pestaña administrativa.
         Tab adminTab =
                 new Tab(
@@ -224,6 +255,9 @@ public final class HotelUqApplication extends Application {
 
         accountTab.setClosable(false);
         reservationsTab.setClosable(false);
+        cardTab.setClosable(false);
+        pointsTab.setClosable(false);
+        purchaseTab.setClosable(false);
         adminTab.setClosable(false);
 
         // Unimos las pestañas.
@@ -231,6 +265,9 @@ public final class HotelUqApplication extends Application {
                 new TabPane(
                         accountTab,
                         reservationsTab,
+                        cardTab,
+                        pointsTab,
+                        purchaseTab,
                         adminTab
                 );
 
@@ -241,7 +278,13 @@ public final class HotelUqApplication extends Application {
                 reservationsTab,
                 authView,
                 components.getCustomerAccountUseCase(),
-                reservationController
+                reservationController,
+                cardTab,
+                cardController,
+                pointsTab,
+                pointsController,
+                purchaseTab,
+                purchaseController
         );
 
         /**

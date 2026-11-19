@@ -4,7 +4,10 @@ import com.hoteluq.application.port.PaymentGateway;
 import com.hoteluq.application.port.PaymentMovementRepository;
 import com.hoteluq.application.port.VirtualCardRepository;
 import com.hoteluq.application.contract.CardRechargeUseCase;
+import com.hoteluq.application.contract.CustomerAccountUseCase;
+import com.hoteluq.application.contract.CustomerVirtualCardUseCase;
 import com.hoteluq.application.customer.CustomerAccountService;
+import com.hoteluq.application.customer.CustomerAccountWithCardProvisioning;
 import com.hoteluq.application.payment.PaymentService;
 import com.hoteluq.domain.model.AdditionalService;
 import com.hoteluq.domain.model.Customer;
@@ -69,6 +72,7 @@ public final class InMemoryHotelComponentsFactory implements HotelComponentsFact
                 Set.of(DEMO_ADMINISTRATOR_ID));
         PaymentGateway paymentGateway = paymentService;
         CardRechargeUseCase cardRechargeUseCase = paymentService;
+        CustomerVirtualCardUseCase customerVirtualCardUseCase = paymentService;
 
         InMemoryCustomerCatalog customerCatalog = new InMemoryCustomerCatalog(List.of(
                 new Customer("GUEST-ANA-001", "Ana Pérez", "ana@example.com")));
@@ -78,12 +82,16 @@ public final class InMemoryHotelComponentsFactory implements HotelComponentsFact
                 new CustomerAccountService(customerCatalog, customerCredentialRepository);
         customerAccountService.initializeCredentialsForExistingCustomer(
                 "GUEST-ANA-001", DEMO_CUSTOMER_PASSWORD);
+        CustomerAccountUseCase customerAccountsWithCards =
+                new CustomerAccountWithCardProvisioning(
+                        customerAccountService, customerVirtualCardUseCase);
         return new HotelComponents(
                 new InMemoryRoomCatalog(rooms),
                 new InMemoryReservationRepository(),
                 new InMemoryServiceCatalog(List.of(breakfast, parking, spa, wellnessPackage)),
                 customerCatalog,
-                customerAccountService,
+                customerAccountsWithCards,
+                customerVirtualCardUseCase,
                 paymentGateway,
                 cardRechargeUseCase,
                 movementRepository);

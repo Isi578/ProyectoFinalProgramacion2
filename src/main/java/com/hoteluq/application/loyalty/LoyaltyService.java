@@ -69,6 +69,7 @@ private final LoyaltyAccountRepository accounts;
     }
 
     /** Spends the points of a benefit and returns the single-use voucher code for it. */
+    @Override
     public synchronized RedemptionVoucher redeemBenefit(String customerId, String benefitId) {
         LoyaltyBenefit benefit = requireBenefit(benefitId);
         LoyaltyAccount account = accounts.findOrCreate(customerId);
@@ -85,6 +86,7 @@ private final LoyaltyAccountRepository accounts;
                 .map(LoyaltyEntry::toString).toList();
     }
 
+    @Override
     public List<LoyaltyBenefit> listBenefits() { return benefitCatalog.findAll(); }
 
     private LoyaltyBenefit requireBenefit(String benefitId) {
