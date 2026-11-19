@@ -209,8 +209,7 @@ public final class HotelUqApplication extends Application {
                 reports,
                 fiscal,
                 new DemoDataLoader(components, loyaltyPromotion.getLoyaltyService(),
-                        fiscal, Path.of("datos-demostracion.csv")),
-                components
+                        fiscal, Path.of("datos-demostracion.csv"))
         );
         adminController.initialize();
 
