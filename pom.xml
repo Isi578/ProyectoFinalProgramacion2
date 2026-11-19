@@ -26,7 +26,20 @@
             <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
+        <!--
+        Se incluye biblioteca para generar los informes PDF
+
+        OpenPDF al parecer es más de gestionar para implementarla
+    -->
+        <dependency>
+            <groupId>com.github.librepdf</groupId>
+            <artifactId>openpdf</artifactId>
+            <version>3.0.5</version>
+        </dependency>
+
     </dependencies>
+
+
     <build>
         <plugins>
             <plugin>
