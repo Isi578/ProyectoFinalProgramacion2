@@ -14,7 +14,11 @@ import com.hoteluq.domain.model.AdditionalService;
 import com.hoteluq.domain.model.Customer;
 import com.hoteluq.domain.model.Reservation;
 import com.hoteluq.domain.model.Room;
+import com.hoteluq.domain.model.RoomType;
+import com.hoteluq.infrastructure.memory.InMemoryRoomCatalog;
+import java.util.List;
 import com.hoteluq.domain.model.ServiceOption;
+import com.hoteluq.domain.model.ServicePackage;
 import com.hoteluq.domain.model.ServicePricingUnit;
 
 import java.math.BigDecimal;
@@ -204,6 +208,87 @@ public final class AdminDashboardService {
         return text.toString();
     }
 
+    /** Devuelve la información estructurada para las tablas administrativas. */
+    public List<Customer> listCustomers(String administratorId) {
+        requireAdministrator(administratorId);
+        return customers.findAll().stream()
+                .sorted((a,b) -> a.getId().compareTo(b.getId())).toList();
+    }
+
+    public List<Room> listRooms(String administratorId) {
+        requireAdministrator(administratorId);
+        if (rooms instanceof InMemoryRoomCatalog catalog) return catalog.findAll();
+        return rooms.findActiveRooms();
+    }
+
+    public List<Reservation> listReservations(String administratorId) {
+        requireAdministrator(administratorId);
+        return reservations.findAll();
+    }
+
+    public List<ServiceOption> listServices(String administratorId) {
+        requireAdministrator(administratorId);
+        return services.listServices();
+    }
+
+    public List<Promotion> listPromotions(String administratorId) {
+        requireAdministrator(administratorId);
+        return promotionList.listPromotions();
+    }
+
+    /** Las operaciones de habitaciones permanecen protegidas por la sesión admin. */
+    public Room saveRoom(String administratorId, String number, String type,
+                         BigDecimal price, int capacity, boolean update) {
+        requireAdministrator(administratorId);
+        if (!(rooms instanceof InMemoryRoomCatalog catalog)) {
+            throw new IllegalStateException("El catálogo de habitaciones no admite modificaciones.");
+        }
+        if (number == null || number.isBlank() || price == null || price.signum() <= 0
+                || capacity <= 0 || type == null || type.isBlank()) {
+            throw new IllegalArgumentException("Revisa número, tipo, precio y capacidad.");
+        }
+        String typeId = type.trim().toUpperCase(java.util.Locale.ROOT);
+        if (!typeId.equals("ESTANDAR") && !typeId.equals("SUITE")) {
+            throw new IllegalArgumentException("Selecciona tipo Estándar o Suite.");
+        }
+        Room room = new Room(number.trim(), new RoomType(typeId,
+                typeId.equals("SUITE") ? "Suite" : "Estándar", price), capacity, true);
+        if (update) {
+            // Una reserva histórica conserva la habitación original que contrató.
+            catalog.update(room);
+        } else {
+            catalog.add(room);
+        }
+        return room;
+    }
+
+    public void deactivateRoom(String administratorId, String number) {
+        requireAdministrator(administratorId);
+        if (!(rooms instanceof InMemoryRoomCatalog catalog)) {
+            throw new IllegalStateException("El catálogo no permite cambios.");
+        }
+        Room current = catalog.findAll().stream()
+                .filter(room -> room.getNumber().equals(number)).findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Habitación no encontrada."));
+        catalog.update(new Room(current.getNumber(), current.getRoomType(),
+                current.getCapacity(), false));
+    }
+
+    /** Disponibilidad para un período, no un estado permanente de la habitación. */
+    public boolean available(String administratorId, String number,
+                             LocalDateTime start, LocalDateTime end) {
+        requireAdministrator(administratorId);
+        if (start == null || end == null || !start.isBefore(end)) {
+            throw new IllegalArgumentException("El período seleccionado no es válido.");
+        }
+        if (rooms.findActiveRoom(number).isEmpty()) return false;
+        return reservations.findAll().stream()
+                .filter(r -> r.getRoom().getNumber().equals(number))
+                .filter(r -> r.getStatus() == com.hoteluq.domain.model.ReservationStatus.CONFIRMED)
+                .noneMatch(r -> start.isBefore(r.getCheckOutAt())
+                        && end.isAfter(r.getCheckInAt()));
+    }
+
     /**
      * cancelByHotel (cancelar por el hotel).
      *
@@ -267,6 +352,29 @@ public final class AdminDashboardService {
         );
 
         return services.addService(newService);
+    }
+
+    /** Crea un paquete con servicios que ya figuran en el catálogo. */
+    public ServiceOption addPackage(String administratorId, String id, String name,
+                                    String componentsCsv) {
+        requireAdministrator(administratorId);
+        if (componentsCsv == null || componentsCsv.isBlank()) {
+            throw new IllegalArgumentException("Escribe los códigos de los servicios del paquete.");
+        }
+        ServicePackage.Builder builder = ServicePackage.builder().id(id).name(name);
+        for (String code : componentsCsv.split(",")) {
+            String normalized = code.trim();
+            ServiceOption component = services.listServices().stream()
+                    .filter(option -> option.getId().equals(normalized))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "Servicio inexistente: " + normalized));
+            if (!component.isAvailable()) {
+                throw new IllegalArgumentException("Servicio inactivo: " + normalized);
+            }
+            builder.add(component);
+        }
+        return services.addService(builder.build());
     }
 
     /**

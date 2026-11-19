@@ -71,6 +71,13 @@ public final class DailyFiscalService {
         // Obtenemos la fecha de ayer.
         LocalDate yesterday = LocalDate.now().minusDays(1);
 
+        // En un hotel vacío no se inventa un cierre fiscal sin movimientos.
+        // El precargador opcional administra por separado los días históricos.
+        boolean hadMovements = movements.findAll().stream()
+                .anyMatch(m -> m.getOccurredAt().toLocalDate().equals(yesterday)
+                        && m.getStatus() == PaymentMovementStatus.COMPLETED);
+        if (!hadMovements) return;
+
         // Construimos la ruta del archivo.
         Path path = fileFor(yesterday);
 

@@ -6,6 +6,20 @@
 # Administrador para activar: admin / hoteluq123
 # Cliente de prueba: cualquier correo incluido y clave cliente123
 
+# SERVICIO;id;nombre;precio;unidad  (PER_STAY / PER_NIGHT / PER_GUEST / PER_GUEST_PER_NIGHT)
+# PAQUETE;id;nombre;componentesSeparadosPorComa
+# BENEFICIO;id;nombre;tipo;puntos;valor
+# Catálogos vacíos al iniciar: estas filas se importan solo con el botón.
+SERVICIO;BREAKFAST;Desayuno;25000;PER_GUEST_PER_NIGHT
+SERVICIO;PARKING;Estacionamiento;18000;PER_NIGHT
+SERVICIO;SPA;Acceso al spa;60000;PER_STAY
+SERVICIO;AGUA;Producto: agua embotellada;6000;PER_STAY
+SERVICIO;KIT_ASEO;Producto: kit de aseo;16000;PER_STAY
+PAQUETE;WELLNESS;Paquete bienestar;SPA,BREAKFAST
+BENEFICIO;DISC_20K;Descuento de 20.000 COP en una reserva;RESERVATION_DISCOUNT;400;20000
+BENEFICIO;SVC_SPA;Acceso al spa;SERVICE;1200;60000
+BENEFICIO;PKG_WELLNESS;Paquete bienestar;SERVICE_PACKAGE;2000;100000
+
 HABITACION;301;ESTANDAR;180000;2
 HABITACION;302;ESTANDAR;180000;2
 HABITACION;303;ESTANDAR;180000;2

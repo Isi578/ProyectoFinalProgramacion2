@@ -127,6 +127,11 @@ public final class LoyaltyService implements LoyaltyPointsPort, LoyaltyPointsUse
                 .map(LoyaltyEntry::toString).toList();
     }
 
+    /** Permite cargar beneficios desde el CSV, nunca automáticamente al iniciar. */
+    public synchronized void addDemonstrationBenefit(LoyaltyBenefit benefit) {
+        benefitCatalog.add(benefit);
+    }
+
     @Override
     public List<LoyaltyBenefit> listBenefits() { return benefitCatalog.findAll(); }
 
