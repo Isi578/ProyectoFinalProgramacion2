@@ -1,6 +1,9 @@
 package com.hoteluq.presentation.javafx.reservation;
 
 import com.hoteluq.application.contract.CustomerAccountUseCase;
+import com.hoteluq.presentation.javafx.card.CustomerCardController;
+import com.hoteluq.presentation.javafx.loyalty.CustomerPointsController;
+import com.hoteluq.presentation.javafx.purchase.CustomerPurchaseController;
 import com.hoteluq.presentation.javafx.auth.CustomerAuthController;
 import com.hoteluq.presentation.javafx.auth.CustomerAuthView;
 
@@ -32,10 +35,19 @@ public final class ReservationAccessGate {
             Tab reservationsTab,
             CustomerAuthView authView,
             CustomerAccountUseCase accounts,
-            ReservationController reservations) {
+            ReservationController reservations,
+            Tab cardTab,
+            CustomerCardController cards,
+            Tab pointsTab,
+            CustomerPointsController points,
+            Tab purchaseTab,
+            CustomerPurchaseController purchases) {
 
         // Sin sesión, las reservas no se pueden abrir.
         reservationsTab.setDisable(true);
+        cardTab.setDisable(true);
+        pointsTab.setDisable(true);
+        purchaseTab.setDisable(true);
 
         tabs.getSelectionModel().select(accountTab);
 
@@ -45,16 +57,28 @@ public final class ReservationAccessGate {
                 customer -> {
 
                     reservations.startSession(customer);
+                    cards.startSession(customer);
+                    points.startSession(customer);
+                    purchases.startSession(customer);
 
                     reservationsTab.setDisable(false);
+                    cardTab.setDisable(false);
+                    pointsTab.setDisable(false);
+                    purchaseTab.setDisable(false);
 
                     tabs.getSelectionModel().select(reservationsTab);
                 },
                 () -> {
 
                     reservations.endSession();
+                    cards.endSession();
+                    points.endSession();
+                    purchases.endSession();
 
                     reservationsTab.setDisable(true);
+                    cardTab.setDisable(true);
+                    pointsTab.setDisable(true);
+                    purchaseTab.setDisable(true);
 
                     tabs.getSelectionModel().select(accountTab);
                 }

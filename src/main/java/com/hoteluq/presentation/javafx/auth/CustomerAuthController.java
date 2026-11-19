@@ -200,7 +200,8 @@ public final class CustomerAuthController {
             view.showSuccess(
                     "Cuenta creada para "
                             + customer.getFullName()
-                            + ". Ya puedes iniciar sesión."
+                            + ". Se asignó una tarjeta virtual con saldo inicial de 0 COP. "
+                            + "Ya puedes iniciar sesión."
             );
 
         } catch (RuntimeException error) {
