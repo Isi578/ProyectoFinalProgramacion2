@@ -12,7 +12,6 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.Locale;
-import java.util.UUID;
 import java.util.regex.Pattern;
 
 public final class CustomerAccountService implements CustomerAccountUseCase {
@@ -47,7 +46,7 @@ public final class CustomerAccountService implements CustomerAccountUseCase {
         }
 
         Customer customer = new Customer(
-                UUID.randomUUID().toString(), normalizedName, normalizedEmail);
+                nextCustomerId(), normalizedName, normalizedEmail);
         String salt = newSalt();
         String passwordHash = hashPassword(password, salt);
         credentialRepository.save(customer.getId(), salt, passwordHash);
@@ -58,6 +57,18 @@ public final class CustomerAccountService implements CustomerAccountUseCase {
             throw saveFailure;
         }
         return customer;
+    }
+
+    /**
+     * Entrega un identificador consecutivo fácil de reconocer.
+     * La consulta evita reutilizar un ID que ya exista en el catálogo.
+     */
+    private String nextCustomerId() {
+        int number = 1;
+        while (true) {
+            String id = String.format(Locale.ROOT, "C-%02d", number++);
+            if (customerCatalog.findById(id).isEmpty()) return id;
+        }
     }
 
     public synchronized void initializeCredentialsForExistingCustomer(

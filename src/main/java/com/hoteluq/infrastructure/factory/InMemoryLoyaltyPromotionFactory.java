@@ -15,7 +15,7 @@ import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDateTime;
 
-/** Builds the services/promotions/points module with demo data for the guest GUEST-ANA-001. */
+/** Crea los servicios de fidelización sin registros precargados. */
 public final class InMemoryLoyaltyPromotionFactory {
     public static final String DEMO_CUSTOMER_ID = "GUEST-ANA-001";
 
@@ -26,7 +26,7 @@ public final class InMemoryLoyaltyPromotionFactory {
 
         InMemoryLoyaltyRepository repository = new InMemoryLoyaltyRepository();
         LoyaltyService loyalty = new LoyaltyService(repository, repository,
-                new SpendBlockAccrualStrategy(), LoyaltyBenefitCatalog.defaults(), clock);
+                new SpendBlockAccrualStrategy(), new LoyaltyBenefitCatalog(java.util.List.of()), clock);
         PromotionService promotions = new PromotionService(repository);
 
         // No hay puntos ni promociones precargados automáticamente.

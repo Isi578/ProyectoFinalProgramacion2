@@ -15,7 +15,24 @@ public final class InMemoryRoomCatalog implements RoomCatalog {
         if (initialRooms != null) initialRooms.forEach(this::add);
     }
 
-    public void add(Room room) { rooms.put(room.getNumber(), room); }
+    /** Rechaza números repetidos para no sobrescribir una habitación accidentalmente. */
+    public synchronized void add(Room room) {
+        if (rooms.putIfAbsent(room.getNumber(), room) != null) {
+            throw new IllegalArgumentException("Ya existe la habitación " + room.getNumber());
+        }
+    }
+
+    /** Actualiza datos y permite cambiar el estado sin perder reservas históricas. */
+    public synchronized void update(Room room) {
+        if (!rooms.containsKey(room.getNumber())) {
+            throw new IllegalArgumentException("La habitación no existe: " + room.getNumber());
+        }
+        rooms.put(room.getNumber(), room);
+    }
+
+    public List<Room> findAll() {
+        return rooms.values().stream().sorted((a,b) -> a.getNumber().compareTo(b.getNumber())).toList();
+    }
 
     @Override
     public List<Room> findActiveRooms() {
